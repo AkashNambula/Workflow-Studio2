@@ -1,0 +1,63 @@
+# =====================================================================
+# WORKFLOW STUDIO MAIN GLOBAL GITIGNORE RULES CONFIGURATIONS SETTINGS
+# =====================================================================
+
+# --- 1. Python Environment Dependencies & Core Interceptors ---
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+ENV/
+backend/env/
+
+# --- 2. Compiled Python Byte-Code Interception Maps ---
+**/__pycache__/
+*.py[cod]
+*$py.class
+backend/app/__pycache__/
+backend/app/*/__pycache__/
+
+# --- 3. Testing Automation & Local Cache Framework Metrics ---
+backend/.pytest_cache/
+.pytest_cache/
+.cache/
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+
+# --- 4. System Access Keys & Security Credentials Isolation (CRITICAL) ---
+backend/.env
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- 5. Output Document Generation Sandboxes ---
+backend/generated_pdfs/
+*.pdf
+
+# --- 6. Frontend Package Dependencies & Build Compilations ---
+frontend/node_modules/
+node_modules/
+frontend/dist/
+frontend/build/
+.npm
+thumbtabs.db
+
+# --- 7. Operating System Logs & IDE Workspace Overrides ---
+.VSCode/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
+
+tests/
+
+.env
+__pycache__/
+.venv/
