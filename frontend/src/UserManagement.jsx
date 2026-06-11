@@ -43,16 +43,14 @@ export default function UserManagement() {
     
     try {
       await axios.post(
-        "http://127.0.0.1:8000/admin/create-user",
-        { 
-          name: name, 
-          email: email, 
-          // 🟢 FIXED: Pushing both validation keys into schema payload to clear structural requirements bounds seamlessly
-          password: password,
-          access_token: password, 
-          phone: phone, 
-          role: role 
-        },
+  "http://127.0.0.1:8000/admin/create-user",
+  {
+    name,
+    email,
+    password,
+    phone,
+    role
+  },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -75,7 +73,8 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async (userEmail) => {
-    if (!window.confirm("Are you sure you want to terminate this user access token setup?")) return;
+    const ok = await window.appConfirm?.("Are you sure you want to terminate this user access token setup?");
+    if (!ok) return;
     try {
       await axios.delete(`http://127.0.0.1:8000/admin/user/${userEmail}`, {
         headers: { Authorization: `Bearer ${token}` }

@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: workflow-frontend
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: workflow-frontend
+
+  template:
+    metadata:
+      labels:
+        app: workflow-frontend
+
+    spec:
+      containers:
+      - name: workflow-frontend
+        image: workflow-frontend:latest
+
+        ports:
+        - containerPort: 4173

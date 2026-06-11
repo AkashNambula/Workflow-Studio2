@@ -1,0 +1,23 @@
+services:
+
+  mongo:
+    image: mongo:7
+    container_name: workflow-mongo
+    ports:
+      - "27017:27017"
+
+  backend:
+    build: ./backend
+    container_name: workflow-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+
+  frontend:
+    build: ./frontend
+    container_name: workflow-frontend
+    ports:
+      - "4173:4173"
+    depends_on:
+      - backend

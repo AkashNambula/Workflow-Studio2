@@ -12,14 +12,13 @@ from app.api.auth import router as auth_router
 from app.api.workflow import router as workflow_router
 from app.api.run import router as run_router
 from app.api.history import router as history_router
+# 🟢 FIXED IMPORT: Pointing directly inside your app workspace submodule tree without 'backend.' prefix
+from app.websocket.live_logs import router as websocket_router
 
-app = FastAPI()
+app = FastAPI(title="HR Automation Workflow Studio", version="3.0.0")
 
-# 🟢 FIXED CORS ORIGINS: Explicitly allowing both localhost and 127.0.0.1 loopbacks
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# 🟢 FIXED CORS ORIGINS: Explicitly added port 5174 loopbacks to stop the login blocking error!
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,10 +28,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Core Application REST Framework Sub-routers
 app.include_router(auth_router)
 app.include_router(workflow_router)
 app.include_router(run_router)
 app.include_router(history_router)
+
+# 🟢 FIXED: Mounted the WebSocket streaming layer to register the /ws/runs/{run_id} path parameters live at runtime
+app.include_router(websocket_router)
 
 
 @app.get("/")

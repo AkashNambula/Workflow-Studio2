@@ -12,11 +12,10 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import UserManagement from "./UserManagement";
-import ConditionNodeCustom from "./ConditionNodeCustom"; // 🟢 FIXED: Importing custom dual-branch handle template node
+import ConditionNodeCustom from "./ConditionNodeCustom";
 
 let nodeId = 1;
 
-// 🟢 FIXED: Registering unique conditional custom visual node handle matrix identifiers inside ReactFlow layout
 const nodeTypes = {
   condition_node_custom: ConditionNodeCustom
 };
@@ -31,27 +30,30 @@ function WorkflowBuilder() {
   const [employeePhone, setEmployeePhone] = useState("");
   const [role, setRole] = useState("");
   const [joiningDate, setJoiningDate] = useState("");
+  const joiningDateRef = useRef(null);
   const [history, setHistory] = useState([]);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [savedWorkflows, setSavedWorkflows] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
-  const [showEmployeeDetails, setShowEmployeeDetails] = useState(true); 
+  const [selectedNodeData, setSelectedNodeData] = useState(null);
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [showEmployeeDetails, setShowEmployeeDetails] = useState(true);
   const [showWorkflowControls, setShowWorkflowControls] = useState(false);
   const [showSavedWorkflows, setShowSavedWorkflows] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  
   const [showUserManagement, setShowUserManagement] = useState(false);
-  
+
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const userRole = user?.role?.toLowerCase();
 
   const [showWelcome, setShowWelcome] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
-
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [confirmState, setConfirmState] = useState({ open: false, message: "", resolve: null });
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -61,10 +63,7 @@ function WorkflowBuilder() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-      return;
-    }
+    if (!token) { navigate("/login"); return; }
     fetchHistory();
     fetchSavedWorkflows();
     const timer = setTimeout(() => setShowWelcome(false), 10000);
@@ -74,60 +73,53 @@ function WorkflowBuilder() {
   const fetchHistory = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://127.0.0.1:8000/history", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get("http://127.0.0.1:8000/history", { headers: { Authorization: `Bearer ${token}` } });
       setHistory(res.data);
-    } catch (e) {
-      console.log(e);
-    }
+    } catch (e) { console.log(e); }
   };
 
   const fetchSavedWorkflows = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://127.0.0.1:8000/workflows", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get("http://127.0.0.1:8000/workflows", { headers: { Authorization: `Bearer ${token}` } });
       setSavedWorkflows(res.data);
-    } catch (e) {
-      console.log(e);
-    }
+    } catch (e) { console.log(e); }
   };
 
   const loadWorkflow = async (name) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`http://127.0.0.1:8000/workflow/${name}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const res = await axios.get(`http://127.0.0.1:8000/workflow/${name}`, { headers: { Authorization: `Bearer ${token}` } });
       setWorkflowName(res.data.name || "");
       setNodes((res.data.nodes || []).map((node) => ({
         id: node.id,
-        // 🟢 FIXED: Persist rendering structures types logic for custom components layout sets
         type: node.type === "condition" ? "condition_node_custom" : "default",
         position: node.position || { x: 200, y: 100 },
         data: {
-          label: node.type === "email" 
-            ? "📧 Email Node" 
-            : node.type === "delay" 
-            ? `⏳ Delay (${node.delay || 5}s)` 
-            : node.type === "pdf" 
-            ? "📄 PDF Node" 
-            : node.type === "condition"
-            ? `🔀 Condition`
+          label: node.type === "email" ? "📧 Email Node"
+            : node.type === "delay" ? `⏳ Delay (${node.delay || 5}s)`
+            : node.type === "pdf" ? "📄 PDF Node"
+            : node.type === "condition" ? "🔀 Employee Validation Node"
             : "📱 SMS Node",
           subject: node.subject || "",
           message: node.message || "",
           delay: node.delay || 0,
           pdfTitle: node.pdf_title || "",
+          pdfBody: node.pdf_body || "",
           smsMessage: node.message || "",
-          expectedName: node.expectedName || "",
-          expectedEmail: node.expectedEmail || ""
+          toAddress: node.toAddress || "",
+          phoneNumber: node.phoneNumber || "",
+          expectedName: "",
+          expectedEmail: ""
+        },
+        style: {
+          background: isDarkTheme ? "#1f1f2e" : "#ffffff",
+          color: isDarkTheme ? "#ffffff" : "#0f172a",
+          border: "1px solid #3f3f46",
+          borderRadius: "8px",
+          padding: "10px"
         }
       })));
-
       setEdges((res.data.edges || []).map((e, i) => ({
         ...e,
         id: e.id || `edge-${i}`,
@@ -154,24 +146,13 @@ function WorkflowBuilder() {
     event.dataTransfer.dropEffect = "move";
   };
 
-  const createNodeConfig = (type, existingData = {}) => {
-    if (type === "email") {
-      return {
-        label: "📧 Email Node",
-        subject: prompt("Enter email subject:", existingData.subject || ""),
-        message: prompt("Enter email message:", existingData.message || "")
-      };
-    }
-    if (type === "delay") {
-      const seconds = prompt("Enter delay in seconds:", existingData.delay || "5");
-      if (!seconds) return null;
-      return { label: `⏳ Delay (${seconds}s)`, delay: Number(seconds) };
-    }
-    if (type === "pdf") {
-      return { label: "📄 PDF Node", pdfTitle: prompt("Enter PDF title:", existingData.pdfTitle || "Welcome Letter") };
-    }
-    if (type === "condition") { return { label: "🔀 Employee Validation Node" }; }
-    return { label: "📱 SMS Node", smsMessage: prompt("Enter SMS message:", existingData.smsMessage || "") };
+  const createDefaultNodeData = (type) => {
+    if (type === "email") return { label: "📧 Email Node", toAddress: "", subject: "", message: "" };
+    if (type === "delay") return { label: "⏳ Delay (5s)", delay: 5 };
+    if (type === "pdf") return { label: "📄 PDF Node", pdfTitle: "" };
+    if (type === "condition") return { label: "🔀 Employee Validation Node", expectedName: "", expectedEmail: "" };
+    if (type === "http") return { label: "🌐 HTTP Request Node", method: "GET", url: "", payload: "" };
+    return { label: "📱 SMS Node", phoneNumber: "", smsMessage: "" };
   };
 
   const onDrop = (event) => {
@@ -180,39 +161,39 @@ function WorkflowBuilder() {
     if (!type || !reactFlowInstance) return;
     const bounds = reactFlowWrapper.current.getBoundingClientRect();
     const position = reactFlowInstance.project({ x: event.clientX - bounds.left, y: event.clientY - bounds.top });
-    const config = createNodeConfig(type);
-    if (!config) return;
-    
-    // 🟢 FIXED: Appends specialized branching custom node type directly upon drop matching signals
+    const data = createDefaultNodeData(type);
     const isCondition = type === "condition";
-    setNodes((nds) => nds.concat({ 
-      id: String(nodeId++), 
-      type: isCondition ? "condition_node_custom" : "default", 
-      position, 
-      data: config 
-    }));
-  };
-
-  const editNode = (node) => {
-    let type = "sms";
-    if (node.data.label.includes("Email")) type = "email";
-    else if (node.data.label.includes("Delay")) type = "delay";
-    else if (node.data.label.includes("PDF")) type = "pdf";
-    else if (node.type === "condition_node_custom") type = "condition";
-    const updated = createNodeConfig(type, node.data);
-    if (!updated) return;
-    setNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, data: updated } : n)));
+    const newNode = {
+      id: String(nodeId++),
+      type: isCondition ? "condition_node_custom" : "default",
+      position,
+      data,
+      style: {
+        background: isDarkTheme ? "#1e1e2e" : "#ffffff",
+        color: isDarkTheme ? "#ffffff" : "#0f172a",
+        border: "1px solid #3f3f46",
+        borderRadius: "8px",
+        padding: "10px"
+      }
+    };
+    setNodes((nds) => nds.concat(newNode));
+    setSelectedNode(newNode.id);
+    setSelectedNodeData(newNode);
+    setShowConfigPanel(true);
   };
 
   const deleteSelectedNode = () => {
-    if (!selectedNode) return alert("Select a node first");
+    if (!selectedNode) return addNotification("Select a node first", "error");
     setNodes((nds) => nds.filter((n) => n.id !== selectedNode));
     setEdges((eds) => eds.filter((e) => e.source !== selectedNode && e.target !== selectedNode));
     setSelectedNode(null);
+    setShowConfigPanel(false);
+    setSelectedNodeData(null);
   };
 
   const saveWorkflow = async () => {
-    if (!workflowName || !employeeName || !employeeEmail || !employeePhone) { alert("Please complete form specifications execution tracking metrics layers."); return; }
+    if (hasOrphans) { addNotification("Cannot save: some nodes are not connected.", "error"); return; }
+    if (!workflowName || !employeeName || !employeeEmail || !employeePhone) { addNotification("Please complete required workflow and employee fields.", "error"); return; }
     try {
       const token = localStorage.getItem("token");
       await axios.post(
@@ -221,58 +202,123 @@ function WorkflowBuilder() {
           name: workflowName || "Notification Workflow",
           nodes: nodes.map((node) => ({
             id: node.id,
-            // 🟢 FIXED: Normalizing custom types structures back cleanly to support backend DB parsing schemas definitions checks
-            type: node.type === "condition_node_custom" ? "condition" : (node.data.label.includes("Email") ? "email" : node.data.label.includes("Delay") ? "delay" : node.data.label.includes("PDF") ? "pdf" : "sms"),
+            type: node.type === "condition_node_custom" ? "condition"
+              : node.data.label.includes("Email") ? "email"
+              : node.data.label.includes("Delay") ? "delay"
+              : node.data.label.includes("PDF") ? "pdf"
+              : node.data.label.includes("HTTP") ? "http"
+              : "sms",
             delay: node.data.delay || 0,
             subject: node.data.subject || "",
             message: node.data.message || node.data.smsMessage || "",
             pdf_title: node.data.pdfTitle || "",
-            expectedName: node.data.expectedName || "",
-            expectedEmail: node.data.expectedEmail || "",
+            pdf_body: node.data.pdfBody || "",
+            toAddress: node.data.toAddress || "",
+            phoneNumber: node.data.phoneNumber || "",
+            expectedName: "",
+            expectedEmail: "",
+            method: node.data.method || "",
+            url: node.data.url || "",
+            payload: node.data.payload || "",
             position: node.position
           })),
-          edges: edges.map((edge) => ({ 
-            source: edge.source, 
-            target: edge.target, 
+          edges: edges.map((edge) => ({
+            source: edge.source,
+            target: edge.target,
             id: edge.id,
-            // 🟢 FIXED: Save edge handles routing parameters to identify True/False selections
-            sourceHandle: edge.sourceHandle || null 
+            sourceHandle: edge.sourceHandle || null
           }))
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert("Workflow saved successfully!");
+      addNotification("Workflow saved successfully", "success");
+      setLastSavedAt(new Date().toISOString());
       fetchSavedWorkflows();
-    } catch(e) {}
+    } catch (e) {}
+  };
+
+  const clearCanvas = () => {
+    setNodes([]);
+    setEdges([]);
+    setSelectedNode(null);
+    setSelectedNodeData(null);
+    setShowConfigPanel(false);
+  };
+
+  const exportWorkflow = () => {
+    const payload = {
+      name: workflowName || "exported-workflow",
+      nodes: nodes.map((node) => ({ id: node.id, type: node.type, position: node.position, data: node.data })),
+      edges: edges.map((e) => ({ source: e.source, target: e.target, id: e.id }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${payload.name || 'workflow'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const runWorkflow = async () => {
     if (isRunning) return;
-    if (!workflowName || !employeeName || !employeeEmail || !employeePhone) { alert("Form entries are incomplete validation criteria sequence loop triggers block."); return; }
-
+    if (!workflowName || !employeeName || !employeeEmail || !employeePhone) { addNotification("Please fill workflow and employee fields before running.", "error"); return; }
     const token = localStorage.getItem("token");
     setIsRunning(true);
-
+    setExecutionLogs([]);
     try {
       const response = await axios.post(
         `http://127.0.0.1:8000/run-workflow/${workflowName || "Notification Workflow"}`,
         { employees: [{ name: employeeName, email: employeeEmail, phone: employeePhone, role: role, joining_date: joiningDate }] },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setExecutionLogs(response.data.logs || []);
-      alert("Workflow executed successfully!");
+      const { run_id } = response.data;
+      setExecutionLogs([`🚀 Run initialized with unique Trace ID: ${run_id}`]);
+      setIsRunning(false);
+      if (run_id) {
+        const ws = new WebSocket(`ws://127.0.0.1:8000/ws/runs/${run_id}`);
+        ws.onmessage = (event) => {
+          const logData = JSON.parse(event.data);
+          const currentStatus = String(logData.status).toUpperCase();
+          setExecutionLogs((prev) => [...prev, `[Live Event Log] Node ${logData.node_id} execution state turned -> ${currentStatus}`]);
+          setNodes((nds) => {
+            const updatedNodes = nds.map((node) => {
+              if (String(node.id) === String(logData.node_id)) {
+                let borderStrokeColor = "#3b82f6";
+                if (currentStatus === "COMPLETED") borderStrokeColor = "#22c55e";
+                if (currentStatus === "FAILED") borderStrokeColor = "#ef4444";
+                return {
+                  ...node,
+                  style: {
+                    ...node.style,
+                    border: `3px solid ${borderStrokeColor}`,
+                    boxShadow: `0 0 20px ${borderStrokeColor}`,
+                    background: isDarkTheme ? "#1f1f2e" : "#ffffff",
+                    transition: "all 0.2s ease-in-out"
+                  }
+                };
+              }
+              return node;
+            });
+            return [...updatedNodes];
+          });
+        };
+        ws.onclose = () => { setExecutionLogs((prev) => [...prev, "🔌 Live execution background tracking closed."]); };
+      }
+      addNotification("Workflow execution kicked off live!", "success");
       fetchHistory();
     } catch (e) {
       console.error(e);
-      alert("Workflow execution failed. Please verify configurations.");
-    } finally {
+      addNotification("Workflow execution failed. Please verify configurations.", "error");
       setIsRunning(false);
     }
   };
 
   const handlePasswordChange = async () => {
-    if (!oldPassword || !newPassword || !confirmPassword) { alert("Please fill all fields"); return; }
-    if (newPassword !== confirmPassword) { alert("Passwords do not match"); return; }
+    if (!oldPassword || !newPassword || !confirmPassword) { addNotification("Please fill all fields", "error"); return; }
+    if (newPassword !== confirmPassword) { addNotification("Passwords do not match", "error"); return; }
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       const response = await fetch("http://127.0.0.1:8000/change-password", {
@@ -282,20 +328,78 @@ function WorkflowBuilder() {
       });
       const data = await response.json();
       if (response.ok) {
-        alert("Password updated successfully");
+        addNotification("Password updated successfully", "success");
         setShowChangePassword(false);
         setOldPassword(""); setNewPassword(""); setConfirmPassword("");
-      } else { alert(data.detail || "Password update failed"); }
-    } catch (error) {
-      console.error(error);
-      alert("Server error");
-    }
+      } else { addNotification(data.detail || "Password update failed", "error"); }
+    } catch (error) { console.error(error); addNotification("Server error", "error"); }
   };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login");
+  };
+
+  // Notification helpers
+  const addNotification = (message, type = "info") => {
+    const id = Date.now() + Math.random();
+    setNotifications((n) => [...n, { id, message, type }]);
+    setTimeout(() => setNotifications((n) => n.filter((x) => x.id !== id)), 4500);
+  };
+
+  // Expose a global confirm helper via window.appConfirm
+  useEffect(() => {
+    const handler = (e) => {
+      const { message, resolve } = e.detail || {};
+      setConfirmState({ open: true, message: message || "Confirm?", resolve });
+    };
+    window.addEventListener("app-confirm", handler);
+    window.appConfirm = (message) => new Promise((resolve) => {
+      window.dispatchEvent(new CustomEvent("app-confirm", { detail: { message, resolve } }));
+    });
+    return () => {
+      window.removeEventListener("app-confirm", handler);
+      try { delete window.appConfirm; } catch (e) {}
+    };
+  }, []);
+
+  const handleConfirm = (ok) => {
+    if (confirmState.resolve) confirmState.resolve(ok);
+    setConfirmState({ open: false, message: "", resolve: null });
+  };
+
+  const handleConfigSave = () => {
+    if (!selectedNodeData) return;
+    let updatedData = { ...selectedNodeData.data };
+    if (updatedData.label.includes("Delay") || updatedData.delay !== undefined) {
+      updatedData.label = `⏳ Delay (${updatedData.delay || 0}s)`;
+    }
+    // Validate node-specific fields before saving (show inline errors)
+    const errors = validateNodeData({ ...selectedNodeData, data: updatedData });
+    if (errors.length > 0) {
+      setSelectedNodeErrors(errors);
+      return;
+    }
+    setSelectedNodeErrors([]);
+
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === selectedNodeData.id ? { ...n, data: updatedData } : n
+      )
+    );
+    setShowConfigPanel(false);
+  };
+
+  const getNodeType = (nodeData) => {
+    if (!nodeData) return "sms";
+    const label = nodeData.data?.label || "";
+    if (label.includes("Email")) return "email";
+    if (label.includes("Delay")) return "delay";
+    if (label.includes("PDF")) return "pdf";
+    if (label.includes("Condition") || label.includes("Validation")) return "condition";
+    if (label.includes("HTTP")) return "http";
+    return "sms";
   };
 
   const activeTheme = {
@@ -314,17 +418,124 @@ function WorkflowBuilder() {
     dropdownHover: isDarkTheme ? "#18181b" : "#f1f5f9"
   };
 
+  const updateField = (field, value) => {
+    setSelectedNodeData((prev) => {
+      const updated = { ...prev, data: { ...prev.data, [field]: value } };
+      const errs = validateNodeData(updated);
+      setSelectedNodeErrors(errs);
+      return updated;
+    });
+  };
+
+  const nodeType = getNodeType(selectedNodeData);
+
+  const [selectedNodeErrors, setSelectedNodeErrors] = useState([]);
+
+  const validateNodeData = (node) => {
+    if (!node) return [];
+    const updatedData = node.data || {};
+    const type = getNodeType(node);
+    const errors = [];
+    if (type === "email") {
+      if (!updatedData.toAddress || !updatedData.toAddress.includes("@")) errors.push("To Address must be a valid email");
+      // Subject and message are supplied by backend; no frontend input required
+    }
+    if (type === "delay") {
+      if (updatedData.delay === undefined || Number.isNaN(updatedData.delay) || updatedData.delay < 1) errors.push("Delay must be at least 1 second");
+    }
+    if (type === "sms") {
+      const digits = (updatedData.phoneNumber || "").replace(/\D/g, "");
+      if (!digits || digits.length !== 10) errors.push("Phone number must contain exactly 10 digits");
+      if (!updatedData.smsMessage) errors.push("Message is required");
+    }
+    if (type === "http") {
+      if (!updatedData.url || !/^https?:\/\//.test(updatedData.url)) errors.push("URL must start with http:// or https://");
+      if (updatedData.payload) {
+        try { JSON.parse(updatedData.payload); } catch (e) { errors.push("JSON payload is invalid"); }
+      }
+    }
+    if (type === "pdf") {
+      if (!updatedData.pdfTitle) errors.push("Document title is required");
+    }
+    return errors;
+  };
+
+  const getFieldError = (field) => {
+    if (!selectedNodeErrors || selectedNodeErrors.length === 0) return null;
+    const map = {
+      toAddress: ["To Address", "email", "recipient", "To Address"],
+      delay: ["Delay must"],
+      phoneNumber: ["Phone number"],
+      smsMessage: ["Message is required"],
+      url: ["URL must"],
+      payload: ["JSON payload"],
+      pdfTitle: ["Document title"]
+    };
+    for (const err of selectedNodeErrors) {
+      const tests = map[field] || [];
+      for (const t of tests) if (err.toLowerCase().includes(t.toLowerCase())) return err;
+    }
+    return null;
+  };
+
+  // run validation when selected node changes
+  useEffect(() => {
+    setSelectedNodeErrors(validateNodeData(selectedNodeData));
+  }, [selectedNodeData]);
+
+  // Detect orphan nodes (no connected edges) and update node styles and save availability
+  const [hasOrphans, setHasOrphans] = useState(false);
+  const [orphanTooltip, setOrphanTooltip] = useState({ visible: false, x: 0, y: 0, text: '' });
+
+  useEffect(() => {
+    const connected = new Set();
+    edges.forEach((e) => { if (e.source) connected.add(String(e.source)); if (e.target) connected.add(String(e.target)); });
+    const updated = nodes.map((n) => {
+      const isOrphan = !connected.has(String(n.id));
+      const baseStyle = n.style || {};
+      let label = n.data?.label || "";
+      if (isOrphan && !label.includes("Not connected")) label = `${label} — ⚠ Not connected`;
+      if (!isOrphan && label.includes("Not connected")) label = label.replace(/\s*—\s*⚠?\s*Not connected/g, "");
+      return {
+        ...n,
+        style: {
+          ...baseStyle,
+          border: isOrphan ? "2px dashed #ef4444" : (baseStyle.border || "1px solid #3f3f46")
+        },
+        data: {
+          ...n.data,
+          label,
+          __isOrphan: isOrphan
+        }
+      };
+    });
+    setNodes((_) => updated);
+    setHasOrphans(updated.some((n) => n.data && n.data.__isOrphan));
+  }, [nodes.length, edges]);
+
+  const handleNodeMouseEnter = (e, node) => {
+    if (node?.data?.__isOrphan) {
+      setOrphanTooltip({ visible: true, x: e.clientX, y: e.clientY, text: 'Not connected' });
+    }
+  };
+  const handleNodeMouseMove = (e, node) => {
+    if (orphanTooltip.visible) setOrphanTooltip((t) => ({ ...t, x: e.clientX, y: e.clientY }));
+  };
+  const handleNodeMouseLeave = (e, node) => {
+    if (orphanTooltip.visible) setOrphanTooltip({ visible: false, x: 0, y: 0, text: '' });
+  };
+
   return (
     <div style={{ ...styles.main, background: activeTheme.mainBg }}>
       <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
 
+      {/* TOP BAR */}
       <div style={{ ...styles.topBar, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border }}>
         <div style={styles.headerLeftSpacer}></div>
         <div style={styles.brandTitleWrap}>
           <h1 style={{ ...styles.heroTitle, color: activeTheme.textTitle }}>HR AUTOMATION WORKFLOW STUDIO</h1>
           <p style={{ ...styles.heroSub, color: activeTheme.textSub }}>Streamline HR processes by automating onboarding, notifications, document generation, and workflow execution in one platform.</p>
         </div>
-
         <div style={styles.topRightSection}>
           <button onClick={() => setIsDarkTheme(!isDarkTheme)} style={{ ...styles.themeToggleBtn, backgroundColor: isDarkTheme ? "#27272a" : "#e2e8f0", color: activeTheme.textTitle, borderColor: activeTheme.border, display: "flex", alignItems: "center" }}>
             {isDarkTheme ? (
@@ -335,14 +546,12 @@ function WorkflowBuilder() {
               </div>
             ) : "🌙 Dark Theme"}
           </button>
-
-          <div style={{ position: "relative" }}>
+            <div style={{ position: "relative" }}>
             <button style={{ ...styles.accountButton, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border, color: activeTheme.textTitle, display: "flex", alignItems: "center" }} onClick={() => setShowAccountMenu(!showAccountMenu)}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style={{ marginRight: "6px" }}>
                 <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1c-2.667 0-8 1.333-8 4v1h16v-1c0-2.667-5.333-4-8-4z"/>
               </svg>My Account ▼
             </button>
-
             {showAccountMenu && (
               <div style={{ ...styles.accountDropdown, backgroundColor: activeTheme.dropdownBg, borderColor: activeTheme.border }}>
                 <button style={{ ...styles.dropdownItem, color: activeTheme.textTitle, borderBottom: `1px solid ${activeTheme.border}` }} onClick={() => { setShowProfile(!showProfile); setShowAccountMenu(false); }}>My Profile</button>
@@ -355,6 +564,7 @@ function WorkflowBuilder() {
       </div>
 
       <div style={styles.content}>
+        {/* SIDEBAR */}
         <div style={styles.sidebar}>
           <div style={{ background: "#3f3f46", padding: "14px", borderRadius: "14px", marginBottom: "16px", color: "#ffffff", fontWeight: "700", fontSize: "24px", textAlign: "center", border: "1px solid #6b7280", boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
@@ -380,25 +590,21 @@ function WorkflowBuilder() {
               </div><span>{showWorkflowControls ? "▲" : "▼"}</span>
             </button>
           )}
-          
+
           {(userRole === "admin" || userRole === "operator") && showWorkflowControls && (
             <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
               <p style={{ ...styles.helperText, color: activeTheme.textSub }}>Drag blocks into the workspace canvas panel:</p>
-              {["email", "pdf", "delay", "sms", "condition"].map((t)=>(
-                <div key={t} draggable onDragStart={(e)=>onDragStart(e,t)} style={{ ...styles.drag, backgroundColor: activeTheme.nodeBg, color: activeTheme.nodeText, borderColor: activeTheme.border }}>
+              {["email", "pdf", "delay", "sms", "condition"].map((t) => (
+                <div key={t} draggable onDragStart={(e) => onDragStart(e, t)} style={{ ...styles.drag, backgroundColor: activeTheme.nodeBg, color: activeTheme.nodeText, borderColor: activeTheme.border }}>
                   {t === "email" ? "📧 Email Node" : t === "pdf" ? "📄 PDF Node" : t === "delay" ? "⏳ Delay Node" : t === "condition" ? "🔀 Condition Node" : "📱 SMS Node"}
                 </div>
               ))}
               <div style={{ ...styles.actionDivider, backgroundColor: activeTheme.border }}></div>
-              
-              {(userRole === "admin" || userRole === "operator") && ( 
-                <button onClick={saveWorkflow} style={styles.action}>Save Workflow</button> 
-              )}
-              
               {(userRole === "admin" || userRole === "operator") && (
-                <button onClick={runWorkflow} disabled={isRunning} style={{ ...styles.action, opacity: isRunning ? 0.6 : 1, cursor: isRunning ? "not-allowed" : "pointer" }}>
-                  {isRunning ? "⏳ Executing Loop..." : "Run Workflow"}
-                </button>
+                <button onClick={saveWorkflow} disabled={hasOrphans} style={{ ...styles.action, marginBottom: 8 }}>Save Workflow</button>
+              )}
+              {(userRole === "admin" || userRole === "operator") && (
+                <button onClick={runWorkflow} disabled={isRunning} style={{ ...styles.action, marginBottom: 8 }}>{isRunning ? "⏳ Executing Loop..." : "Run Workflow"}</button>
               )}
               <button onClick={deleteSelectedNode} style={styles.delete}>Delete Selected Node</button>
             </div>
@@ -412,21 +618,19 @@ function WorkflowBuilder() {
               </div><span>{showSavedWorkflows ? "▲" : "▼"}</span>
             </button>
           )}
-          
+
           {userRole === "admin" && showSavedWorkflows && (
             <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
               {savedWorkflows.length === 0 ? <p style={styles.emptyText}>No saved flows detected.</p> :
-                savedWorkflows.map((wf,i)=><div key={i} style={{ ...styles.card, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} onClick={()=>loadWorkflow(wf.name)}>📁 {wf.name}</div>)
+                savedWorkflows.map((wf, i) => (
+                  <div key={i} style={{ ...styles.card, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} onClick={() => loadWorkflow(wf.name)}>📁 {wf.name}</div>
+                ))
               }
             </div>
           )}
 
-          {/* User Management Privilege Button Trigger */}
           {userRole === "admin" && (
-            <button
-              style={{ ...styles.sectionBtn, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border, color: showUserManagement ? "#a855f7" : (isDarkTheme ? "#e2e8f0" : "#0f172a") }}
-              onClick={() => setShowUserManagement(!showUserManagement)}
-            >
+            <button style={{ ...styles.sectionBtn, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border, color: showUserManagement ? "#a855f7" : (isDarkTheme ? "#e2e8f0" : "#0f172a") }} onClick={() => setShowUserManagement(!showUserManagement)}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>👥 <span>User Management</span></div>
               <span>{showUserManagement ? "▲" : "▼"}</span>
             </button>
@@ -440,21 +644,23 @@ function WorkflowBuilder() {
               </div><span>{showHistory ? "▲" : "▼"}</span>
             </button>
           )}
-          
+
           {userRole === "admin" && showHistory && (
             <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
               {history.length === 0 ? <p style={styles.emptyText}>No execution tracking available.</p> :
-                history.map((item,i)=><div key={i} style={{ ...styles.card, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }}><strong>{item.workflow_name}</strong><br/><span style={{ fontSize: "11px", color: "#a855f7" }}>{item.status}</span></div>)
+                history.map((item, i) => (
+                  <div key={i} style={{ ...styles.card, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }}>
+                    <strong>{item.workflow_name}</strong><br/>
+                    <span style={{ fontSize: "11px", color: "#a855f7" }}>{item.status}</span>
+                  </div>
+                ))
               }
             </div>
           )}
 
-          {/* Redirection Navigation Box */}
           {userRole === "admin" && showUserManagement && (
             <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
-              <button style={styles.action} onClick={() => navigate("/user-management")}>
-                Create / Manage Users
-              </button>
+              <button style={styles.action} onClick={() => navigate("/user-management")}>Create / Manage Users</button>
             </div>
           )}
         </div>
@@ -467,11 +673,11 @@ function WorkflowBuilder() {
               <input placeholder="Employee Name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
               <div>
                 <input placeholder="Employee Email" value={employeeEmail} onChange={(e) => setEmployeeEmail(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeeEmail && !employeeEmail.includes("@gmail.com") ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
-                {employeeEmail && !employeeEmail.includes("@gmail.com") && ( <p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Enter valid Gmail address</p> )}
+                {employeeEmail && !employeeEmail.includes("@gmail.com") && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Enter valid Gmail address</p>)}
               </div>
               <div>
                 <input placeholder="Employee Phone" value={employeePhone} onChange={(e) => { setEmployeePhone(e.target.value.replace(/\D/g, "")); }} maxLength={10} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeePhone && employeePhone.length !== 10 ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
-                {employeePhone && employeePhone.length !== 10 && ( <p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Phone number must be 10 digits</p> )}
+                {employeePhone && employeePhone.length !== 10 && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Phone number must be 10 digits</p>)}
               </div>
               <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, cursor: "pointer" }}>
                 <option value="">Select Role</option>
@@ -480,12 +686,25 @@ function WorkflowBuilder() {
                 <option value="SAP ABAP">SAP ABAP</option>
                 <option value="SAP BASIS">SAP BASIS</option>
               </select>
-              <input type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input ref={joiningDateRef} type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, paddingRight: '40px' }} />
+                <button onClick={() => { try { if (joiningDateRef.current && joiningDateRef.current.showPicker) { joiningDateRef.current.showPicker(); } else if (joiningDateRef.current) { joiningDateRef.current.focus(); } } catch (e) { if (joiningDateRef.current) joiningDateRef.current.focus(); } }} aria-label="Open calendar" style={{ position: 'absolute', right: 8, background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTheme.textSub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                </button>
+              </div>
             </div>
           )}
 
           <div style={{ flex: 1, position: "relative" }}>
             <div style={styles.canvasBadge}>WORKFLOW PLAYGROUND CANVAS</div>
+            {/* top-left canvas toolbar removed to avoid duplication; Save/Run remain in topbar */}
+
+            {/* Orphan tooltip */}
+            {orphanTooltip.visible && (
+              <div style={{ position: 'fixed', left: orphanTooltip.x + 12, top: orphanTooltip.y + 12, zIndex: 11000, background: '#ef4444', color: '#fff', padding: '6px 8px', borderRadius: 6, fontSize: 12, pointerEvents: 'none' }}>
+                {orphanTooltip.text}
+              </div>
+            )}
             {isRunning && (
               <div style={styles.canvasLoaderOverlay}>
                 <div style={styles.spinner}></div>
@@ -498,25 +717,71 @@ function WorkflowBuilder() {
                 <p style={{ fontSize: "14px", marginTop: "10px", color: "#a1a1aa" }}>Drag action components from the Workflow Controls menu to arrange visual loops</p>
               </div>
             )}
-
             <ReactFlow
-              nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={setReactFlowInstance} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onDrop={onDrop} onDragOver={onDragOver}
-              onNodeClick={(e,node)=>{setSelectedNode(node.id); if(window.confirm("Edit this node configuration?")) editNode(node);}}
-              onEdgeClick={(e,edge)=>{if(window.confirm("Remove this link pathway?")) setEdges((eds)=>eds.filter((x)=>x.id!==edge.id));}}
+              nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+              onInit={setReactFlowInstance} onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange} onConnect={onConnect}
+              onDrop={onDrop} onDragOver={onDragOver}
+              onNodeClick={(e, node) => {
+                setSelectedNode(node.id);
+                setSelectedNodeData(node);
+                setShowConfigPanel(true);
+              }}
+              onNodeMouseEnter={handleNodeMouseEnter}
+              onNodeMouseMove={handleNodeMouseMove}
+              onNodeMouseLeave={handleNodeMouseLeave}
+              onEdgeClick={async (e, edge) => {
+                const ok = await window.appConfirm?.("Remove this link pathway?");
+                if (ok) setEdges((eds) => eds.filter((x) => x.id !== edge.id));
+              }}
               fitView
             >
-              <Controls style={{ backgroundColor: isDarkTheme ? '#1e1e2e' : '#ffffff', border: `1px solid ${activeTheme.border}`, borderRadius: '4px', color: activeTheme.textTitle }} />
+              <Controls style={{ backgroundColor: isDarkTheme ? "#1e1e2e" : "#ffffff", border: `1px solid ${activeTheme.border}`, borderRadius: "4px", color: activeTheme.textTitle }} />
               <Background color={activeTheme.dotColor} gap={20} size={1} variant="dots" />
             </ReactFlow>
 
-            <div style={{ background: "#18181b", color: "#fff", padding: "15px", margin: "10px", borderRadius: "8px", maxHeight: "180px", overflowY: "auto" }}>
-              <h3>Execution Logs</h3>
-              {executionLogs.length === 0 ? ( <p>No logs available</p> ) : ( executionLogs.map((log, index) => ( <div key={index}>{log}</div> )) )}
+            {/* Bottom-right fixed Clear / Export buttons */}
+            <div style={{ position: 'absolute', right: 20, bottom: 20, zIndex: 80, display: 'flex', gap: 10 }}>
+              <button onClick={clearCanvas} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Clear</button>
+              <button onClick={exportWorkflow} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #64748b', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontWeight: 700 }}>Export</button>
+            </div>
+
+            {/* Notifications stack */}
+            <div style={{ position: "absolute", top: 16, right: 16, zIndex: 60, display: "flex", flexDirection: "column", gap: "8px" }}>
+              {notifications.map((n) => (
+                <div key={n.id} style={{ minWidth: "220px", padding: "10px 12px", borderRadius: "8px", color: "#fff", background: n.type === 'error' ? '#ef4444' : n.type === 'success' ? '#16a34a' : '#2563eb', boxShadow: '0 6px 18px rgba(0,0,0,0.3)' }}>
+                  {n.message}
+                </div>
+              ))}
+            </div>
+
+            {/* Confirm modal */}
+            {confirmState.open && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10050, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 420, background: isDarkTheme ? '#0f1724' : '#ffffff', padding: 20, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.6)', color: isDarkTheme ? '#fff' : '#0f172a' }}>
+                  <div style={{ marginBottom: 12, fontWeight: 800 }}>{confirmState.message}</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button onClick={() => handleConfirm(false)} style={{ padding: '8px 12px', borderRadius: 8, background: 'transparent', border: `1px solid ${isDarkTheme ? '#374151' : '#cbd5e1'}`, color: isDarkTheme ? '#a1a1aa' : '#374151' }}>Cancel</button>
+                    <button onClick={() => handleConfirm(true)} style={{ padding: '8px 12px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none' }}>Confirm</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: "#18181b", color: "#fff", padding: "15px", margin: "10px", borderRadius: "8px", maxHeight: "180px", overflowY: "auto", border: "1px solid #27272a" }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#a855f7" }}>Execution Log Stream</h3>
+              {executionLogs.length === 0
+                ? <p style={{ margin: 0, fontSize: "12px", color: "#71717a" }}>Waiting for execution loop trace mapping vectors...</p>
+                : executionLogs.map((log, index) => (
+                  <div key={index} style={{ fontSize: "12px", fontFamily: "monospace", margin: "3px 0" }}>{log}</div>
+                ))
+              }
             </div>
           </div>
         </div>
       </div>
 
+      {/* CHANGE PASSWORD MODAL */}
       {showChangePassword && (
         <div style={{ position: "absolute", top: "90px", right: "20px", zIndex: 1000 }}>
           <div style={{ ...styles.passwordModal, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border }}>
@@ -528,6 +793,202 @@ function WorkflowBuilder() {
               <button onClick={handlePasswordChange} style={styles.saveButton}>Update Password</button>
               <button onClick={() => setShowChangePassword(false)} style={{ ...styles.cancelButton, backgroundColor: isDarkTheme ? "#27272a" : "#cbd5e1", color: activeTheme.textTitle }}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* RIGHT-SIDE NODE CONFIGURATION PANEL */}
+      {showConfigPanel && selectedNodeData && (
+        <div style={{
+          position: "fixed", right: 0, top: 0,
+          width: "360px", height: "100%",
+          backgroundColor: isDarkTheme ? "#111118" : "#ffffff",
+          color: isDarkTheme ? "#ffffff" : "#0f172a",
+          borderLeft: `1px solid ${isDarkTheme ? "#27272a" : "#cbd5e1"}`,
+          padding: "0", zIndex: 9999, overflowY: "auto",
+          boxShadow: "-6px 0 24px rgba(0,0,0,0.5)",
+          display: "flex", flexDirection: "column"
+        }}>
+          {/* Panel Header */}
+          <div style={{ padding: "20px 20px 16px 20px", borderBottom: `1px solid ${isDarkTheme ? "#27272a" : "#e2e8f0"}`, background: isDarkTheme ? "#18181b" : "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "11px", color: "#a855f7", fontWeight: "700", letterSpacing: "0.8px", marginBottom: "4px" }}>NODE CONFIGURATION</div>
+                <div style={{ fontSize: "16px", fontWeight: "700", color: isDarkTheme ? "#ffffff" : "#0f172a" }}>
+                  {selectedNodeData.data.label}
+                </div>
+              </div>
+              <button onClick={() => setShowConfigPanel(false)} style={{ background: "transparent", border: `1px solid ${isDarkTheme ? "#3f3f46" : "#cbd5e1"}`, color: isDarkTheme ? "#a1a1aa" : "#64748b", width: "32px", height: "32px", borderRadius: "6px", cursor: "pointer", fontSize: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+            </div>
+          </div>
+
+          {/* Panel Fields */}
+          <div style={{ padding: "20px", flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
+
+            {/* Per-field inline errors will appear next to inputs */}
+
+            {/* EMAIL NODE */}
+            {nodeType === "email" && (
+              <>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>To Address</label>
+                  <input
+                    type="email" placeholder="recipient@example.com"
+                    value={selectedNodeData.data.toAddress || ""}
+                    onChange={(e) => updateField("toAddress", e.target.value)}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('toAddress') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1") }}
+                  />
+                  {getFieldError('toAddress') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('toAddress')}</p>}
+                </div>
+              </>
+            )}
+
+            {/* DELAY NODE */}
+            {nodeType === "delay" && (
+              <div style={styles.fieldGroup}>
+                <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>Delay Duration (seconds)</label>
+                <input
+                  type="number" placeholder="5" min="1"
+                  value={selectedNodeData.data.delay || ""}
+                  onChange={(e) => updateField("delay", Number(e.target.value))}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('delay') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1") }}
+                />
+                  {getFieldError('delay') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('delay')}</p>}
+                <p style={{ fontSize: "11px", color: isDarkTheme ? "#52525b" : "#94a3b8", margin: "6px 0 0 0" }}>Workflow pauses for this many seconds before proceeding to the next node.</p>
+              </div>
+            )}
+
+            {/* SMS NODE */}
+            {nodeType === "sms" && (
+              <>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>Phone Number</label>
+                  <input
+                    type="tel" placeholder="+91XXXXXXXXXX"
+                    value={selectedNodeData.data.phoneNumber || ""}
+                    onChange={(e) => {
+                      const digits = (e.target.value || "").replace(/\D/g, "").slice(0, 10);
+                      updateField("phoneNumber", digits);
+                    }}
+                    maxLength={10}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('phoneNumber') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1") }}
+                  />
+                  {getFieldError('phoneNumber') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('phoneNumber')}</p>}
+                </div>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>Message</label>
+                  <textarea
+                    placeholder="SMS message content..."
+                    value={selectedNodeData.data.smsMessage || ""}
+                    onChange={(e) => updateField("smsMessage", e.target.value)}
+                    rows={4}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('smsMessage') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1"), resize: "vertical", fontFamily: "inherit" }}
+                  />
+                  {getFieldError('smsMessage') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('smsMessage')}</p>}
+                </div>
+              </>
+            )}
+
+            {/* PDF NODE */}
+            {nodeType === "pdf" && (
+              <>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>Document Title</label>
+                  <input
+                    type="text" placeholder="e.g. Offer Letter, Welcome Letter"
+                    value={selectedNodeData.data.pdfTitle || ""}
+                    onChange={(e) => updateField("pdfTitle", e.target.value)}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('pdfTitle') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1") }}
+                  />
+                  {getFieldError('pdfTitle') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('pdfTitle')}</p>}
+                  <p style={{ fontSize: "11px", color: isDarkTheme ? "#52525b" : "#94a3b8", margin: "4px 0 0 0" }}>This title will appear as the heading in the generated PDF.</p>
+                </div>
+              </>
+            )}
+
+            {/* CONDITION NODE */}
+            {nodeType === "condition" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div style={{ background: isDarkTheme ? "#0d1f12" : "#f0fdf4", border: `1px solid ${isDarkTheme ? "#166534" : "#86efac"}`, borderRadius: "8px", padding: "14px 16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: "20px", lineHeight: 1 }}>✅</span>
+                  <div>
+                    <div style={{ fontSize: "12px", fontWeight: "700", color: isDarkTheme ? "#4ade80" : "#16a34a", marginBottom: "4px" }}>System Validation Active</div>
+                    <div style={{ fontSize: "12px", color: isDarkTheme ? "#86efac" : "#15803d", lineHeight: "1.5" }}>
+                      This node operates as an automated validation step. It dynamically evaluates fields directly from the global employee workflow context against backend assertions.
+                    </div>
+                  </div>
+                </div>
+                <div style={{ background: isDarkTheme ? "#18181b" : "#f8fafc", border: `1px solid ${isDarkTheme ? "#3f3f46" : "#e2e8f0"}`, borderRadius: "8px", padding: "12px 16px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "700", color: isDarkTheme ? "#71717a" : "#94a3b8", letterSpacing: "0.6px", marginBottom: "10px" }}>AUTOMATED ROUTING PATHS</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#22c55e", flexShrink: 0 }}></div>
+                      <span style={{ fontSize: "12px", color: isDarkTheme ? "#d4d4d8" : "#374151" }}><strong>True Handle</strong> — Metrics match runtime criteria.</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#ef4444", flexShrink: 0 }}></div>
+                      <span style={{ fontSize: "12px", color: isDarkTheme ? "#d4d4d8" : "#374151" }}><strong>False Handle</strong> — Target validation falls open or fails.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* HTTP REQUEST NODE */}
+            {nodeType === "http" && (
+              <>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>Method</label>
+                  <select
+                    value={selectedNodeData.data.method || "GET"}
+                    onChange={(e) => updateField("method", e.target.value)}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: isDarkTheme ? "#3f3f46" : "#cbd5e1", cursor: "pointer" }}
+                  >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                  </select>
+                </div>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>URL</label>
+                  <input
+                    type="url" placeholder="https://api.example.com/endpoint"
+                    value={selectedNodeData.data.url || ""}
+                    onChange={(e) => updateField("url", e.target.value)}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('url') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1") }}
+                  />
+                  {getFieldError('url') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('url')}</p>}
+                </div>
+                <div style={styles.fieldGroup}>
+                  <label style={{ ...styles.fieldLabel, color: isDarkTheme ? "#a1a1aa" : "#64748b" }}>JSON Payload <span style={{ color: isDarkTheme ? "#52525b" : "#94a3b8", fontWeight: "400" }}>(optional)</span></label>
+                  <textarea
+                    placeholder={'{\n  "key": "value"\n}'}
+                    value={selectedNodeData.data.payload || ""}
+                    onChange={(e) => updateField("payload", e.target.value)}
+                    rows={5}
+                    style={{ ...styles.panelInput, backgroundColor: isDarkTheme ? "#09090b" : "#f8fafc", color: isDarkTheme ? "#ffffff" : "#0f172a", borderColor: getFieldError('payload') ? '#ef4444' : (isDarkTheme ? "#3f3f46" : "#cbd5e1"), resize: "vertical", fontFamily: "monospace", fontSize: "12px" }}
+                  />
+                  {getFieldError('payload') && <p style={{ color: '#ef4444', fontSize: '12px', margin: '6px 0 0 0' }}>{getFieldError('payload')}</p>}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Panel Footer — Save / Close */}
+          <div style={{ padding: "16px 20px", borderTop: `1px solid ${isDarkTheme ? "#27272a" : "#e2e8f0"}`, background: isDarkTheme ? "#18181b" : "#f8fafc", display: "flex", gap: "10px" }}>
+            <button
+              onClick={handleConfigSave}
+              disabled={selectedNodeErrors && selectedNodeErrors.length > 0}
+              style={{ flex: 1, padding: "11px", borderRadius: "8px", border: "none", background: selectedNodeErrors && selectedNodeErrors.length > 0 ? '#6b7280' : '#a855f7', color: "#ffffff", cursor: selectedNodeErrors && selectedNodeErrors.length > 0 ? 'not-allowed' : 'pointer', fontSize: "13px", fontWeight: "700", letterSpacing: "0.3px" }}
+            >
+              ✓ Save Changes
+            </button>
+            <button
+              onClick={() => setShowConfigPanel(false)}
+              style={{ flex: 1, padding: "11px", borderRadius: "8px", border: `1px solid ${isDarkTheme ? "#3f3f46" : "#cbd5e1"}`, background: "transparent", color: isDarkTheme ? "#a1a1aa" : "#64748b", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -569,7 +1030,10 @@ const styles = {
   passwordModal: { padding: "24px", borderRadius: "12px", width: "360px", display: "flex", flexDirection: "column", gap: "12px", border: "1px solid" },
   modalInput: { padding: "10px 14px", borderRadius: "6px", border: "1px solid", outline: "none", fontSize: "13px" },
   saveButton: { flex: 1, padding: "10px", borderRadius: "6px", border: "none", background: "#3b82f6", color: "white", cursor: "pointer", fontSize: "13px", fontWeight: "600" },
-  cancelButton: { flex: 1, padding: "10px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: "600" }
+  cancelButton: { flex: 1, padding: "10px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: "600" },
+  fieldGroup: { display: "flex", flexDirection: "column", gap: "6px" },
+  fieldLabel: { fontSize: "11px", fontWeight: "700", letterSpacing: "0.6px", textTransform: "uppercase" },
+  panelInput: { width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid", fontSize: "13px", boxSizing: "border-box", outline: "none", transition: "border-color 0.2s" }
 };
 
 export default function App() {

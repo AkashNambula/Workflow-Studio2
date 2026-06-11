@@ -9,7 +9,7 @@ from app.core.security import (
     ALGORITHM
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
+from jose import jwt
 
 router = APIRouter(tags=["Authentication"])
 security_scheme = HTTPBearer()
