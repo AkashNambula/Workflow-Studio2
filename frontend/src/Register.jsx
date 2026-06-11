@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 
 function Register() {
-
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -16,7 +15,6 @@ function Register() {
   const navigate = useNavigate();
 
   const handleRegister = async () => {
-
     // Name validation
     if (!name) {
       setRegisterMessage("Please enter your name");
@@ -53,16 +51,15 @@ function Register() {
     }
 
     try {
-
       await axios.post(
         "http://127.0.0.1:8000/register",
-       {
-  name,
-  email,
-  phone,
-  password,
-  role
-}
+        {
+          name,
+          email,
+          phone,
+          password,
+          role
+        }
       );
 
       setRegisterMessage("Successfully Registered");
@@ -73,19 +70,15 @@ function Register() {
       }, 1200);
 
     } catch (error) {
-
       setRegisterMessage("Registration Failed");
       setRegisterSuccess(false);
-
       console.error(error);
     }
   };
 
   return (
     <div style={container}>
-
       <div style={card}>
-
         <h1 style={title}>
           HR AUTOMATION REGISTER
         </h1>
@@ -142,14 +135,15 @@ function Register() {
           onChange={(e) => setConfirmPassword(e.target.value)}
           style={input}
         />
-  <select
-  value={role}
-  onChange={(e) => setRole(e.target.value)}
-  style={input}
->
-  <option value="Operator">Operator</option>
-  <option value="Viewer">Viewer</option>
-</select>
+
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          style={input}
+        >
+          <option value="Operator">Operator</option>
+          <option value="Viewer">Viewer</option>
+        </select>
 
         <button
           onClick={handleRegister}
@@ -171,9 +165,7 @@ function Register() {
             Login here
           </Link>
         </p>
-
       </div>
-
     </div>
   );
 }

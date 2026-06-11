@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios"; 
 
@@ -22,10 +22,6 @@ export default function UserManagement() {
   
   const token = localStorage.getItem("token");
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
   const fetchUsers = async () => {
     try {
       const res = await axios.get("http://127.0.0.1:8000/admin/users", {
@@ -33,9 +29,18 @@ export default function UserManagement() {
       });
       setUsers(res.data);
     } catch (err) {
-      console.error("Failed to load staff list dashboard mapping.");
+      console.error(err);
     }
   };
+
+  // 🟢 FIX 4: Refactored calling structure with localized async load wrapper to align with React 19 specs
+  useEffect(() => {
+    const loadUsers = async () => {
+      await fetchUsers();
+    };
+
+    loadUsers();
+  }, []);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -43,14 +48,14 @@ export default function UserManagement() {
     
     try {
       await axios.post(
-  "http://127.0.0.1:8000/admin/create-user",
-  {
-    name,
-    email,
-    password,
-    phone,
-    role
-  },
+        "http://127.0.0.1:8000/admin/create-user",
+        {
+          name,
+          email,
+          password,
+          phone,
+          role
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -65,7 +70,7 @@ export default function UserManagement() {
       
       let errorData = err.response?.data?.detail;
       if (typeof errorData === "object") {
-        errorData = JSON.stringify(errorData); // Protects and safely marshals complex data dictionaries strings to block blank screen drops
+        errorData = JSON.stringify(errorData);
       }
       
       setStatusMessage(errorData || "Could not validate credentials structure access token matrix");
@@ -91,7 +96,6 @@ export default function UserManagement() {
     }
   };
 
-  // Toggle function to open/close Accordion structure safely
   const toggleAccordion = (userId) => {
     if (openUserScopeId === userId) {
       setOpenUserScopeId(null);
@@ -100,7 +104,6 @@ export default function UserManagement() {
     }
   };
 
-  // Render Access details with structured matrix logic map parameters
   const renderAccessControlScope = (userRole) => {
     const roleNormalized = userRole?.toLowerCase();
     

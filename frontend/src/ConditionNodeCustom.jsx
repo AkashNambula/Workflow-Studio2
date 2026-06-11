@@ -1,8 +1,7 @@
-import React from 'react';
 import { Handle, Position } from 'reactflow';
 
-// 🟢 FIXED: Creating a specialized custom node template with explicit named True/False routing channels
-const ConditionNodeCustom = ({ data }) => {
+// 🟢 FIXED: Removed unused '{ data }' variable from signature block
+const ConditionNodeCustom = () => {
   return (
     <div style={{
       background: '#1e1e2f',
