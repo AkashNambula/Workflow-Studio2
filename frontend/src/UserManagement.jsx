@@ -78,21 +78,20 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async (userEmail) => {
-    const ok = await window.appConfirm?.("Are you sure you want to terminate this user access token setup?");
-    if (!ok) return;
+    // Directly terminate user access; show inline status message instead of a popup confirmation.
     try {
       await axios.delete(`http://127.0.0.1:8000/admin/user/${userEmail}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setIsSuccess(true);
-      setStatusMessage("Account access context dropped from registry loops.");
+      setStatusMessage("Account access context terminated successfully.");
       fetchUsers();
       setTimeout(() => setStatusMessage(""), 4000);
     } catch (err) {
       setIsSuccess(false);
       let errorData = err.response?.data?.detail;
       if (typeof errorData === "object") errorData = JSON.stringify(errorData);
-      setStatusMessage(errorData || "Failed to delete user configuration properties.");
+      setStatusMessage(errorData || "Failed to terminate user access.");
     }
   };
 
@@ -170,7 +169,7 @@ export default function UserManagement() {
             <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} style={styles.input} required />
             <input type="email" placeholder="Corporate Email Address" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
             <input type="password" placeholder="Access Authentication Token / Password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} required />
-            <input type="text" placeholder="Phone Link Parameters" value={phone} onChange={(e) => setPhone(e.target.value)} style={styles.input} required />
+            <input type="text" placeholder="Phone Link Parameters" value={phone} onChange={(e) => { const digits = (e.target.value || "").replace(/\D/g, "").slice(0,10); setPhone(digits); }} maxLength={10} pattern="\d{10}" style={styles.input} required />
             
             <div style={{ marginTop: "6px" }}>
               <label style={{ fontSize: "12px", color: "#94a3b8", fontWeight: "600", display: "block", marginBottom: "6px" }}>Designated Permission Role Context</label>

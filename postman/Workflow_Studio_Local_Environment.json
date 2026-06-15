@@ -1,0 +1,34 @@
+{
+	"id": "20116f9c-4377-4325-80f4-378f6e3f65c9",
+	"name": "Workflow Studio Local",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "admin_token",
+			"value": "",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "operator_token",
+			"value": "",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "viewer_token",
+			"value": "",
+			"type": "default",
+			"enabled": true
+		}
+	],
+	"color": null,
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2026-06-15T05:55:29.234Z",
+	"_postman_exported_using": "Postman/12.14.5"
+}

@@ -696,7 +696,7 @@ function WorkflowBuilder() {
                 {employeeEmail && !employeeEmail.includes("@gmail.com") && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Enter valid Gmail address</p>)}
               </div>
               <div>
-                <input placeholder="Employee Phone" value={employeePhone} onChange={(e) => { setEmployeePhone(e.target.value.replace(/\D/g, "")); }} maxLength={10} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeePhone && employeePhone.length !== 10 ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
+                <input placeholder="Employee Phone" value={employeePhone} onChange={(e) => { const digits = (e.target.value || "").replace(/\D/g, "").slice(0,10); setEmployeePhone(digits); }} maxLength={10} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeePhone && employeePhone.length !== 10 ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
                 {employeePhone && employeePhone.length !== 10 && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Phone number must be 10 digits</p>)}
               </div>
               <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, cursor: "pointer" }}>

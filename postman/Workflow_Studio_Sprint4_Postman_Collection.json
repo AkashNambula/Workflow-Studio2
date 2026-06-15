@@ -1,0 +1,385 @@
+{
+  "info": {
+    "_postman_id": "1a73fb4e-690c-4616-9555-9785c9298f7d",
+    "name": "Workflow Studio Sprint 4",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45757967",
+    "_collection_link": "https://go.postman.co/collection/45757967-1a73fb4e-690c-4616-9555-9785c9298f7d?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": []
+      },
+      "response": []
+    },
+    {
+      "name": "Admin Login",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"prasad@gmail.com\",\r\n  \"password\": \"prasad123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Home Endpoint",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Test DB Connection",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/test-db",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "test-db"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get All Users",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/admin/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "admin",
+            "users"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get History",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/history",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "history"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get All Workflows",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/workflows",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "workflows"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Workflow",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"name\": \"Postman_Test_Workflow\",\r\n  \"nodes\": [\r\n    {\r\n      \"id\": \"1\",\r\n      \"type\": \"email\"\r\n    }\r\n  ],\r\n  \"edges\": []\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/create-workflow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "create-workflow"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Single Workflow",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/workflow/Postman_Test_Workflow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "workflow",
+            "Postman_Test_Workflow"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Run Workflow",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3ODE1MDE1OTgsInN1YiI6InByYXNhZEBnbWFpbC5jb20ifQ.sHJW2jeSGngnmEEffgvBvwVVBxG8EiMJgRQDdiQHXM8",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"employees\": [\r\n    {\r\n      \"name\": \"Akash\",\r\n      \"email\": \"akash@example.com\",\r\n      \"phone\": \"9876543210\",\r\n      \"role\": \"Developer\",\r\n      \"joining_date\": \"2026-06-15\"\r\n    }\r\n  ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/run-workflow/Postman_Test_Workflow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "run-workflow",
+            "Postman_Test_Workflow"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Operator Login",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"devii@gmail.com\",\r\n  \"password\": \"devii123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Viewer Login",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"mahesh@gmail.com\",\r\n  \"password\": \"mahesh123\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Viewer Get All Workflows",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{viewer_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/workflows",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "workflows"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Viewer Create Workflow - Negative Test",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{viewer_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"name\": \"Viewer_Test_Workflow\",\r\n  \"nodes\": [],\r\n  \"edges\": []\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/create-workflow",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "create-workflow"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "No Token History Test",
+      "request": {
+        "method": "GET",
+        "header": []
+      },
+      "response": []
+    }
+  ]
+}
