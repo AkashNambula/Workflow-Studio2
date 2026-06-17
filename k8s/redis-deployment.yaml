@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: workflow-redis
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: workflow-redis
+
+  template:
+    metadata:
+      labels:
+        app: workflow-redis
+
+    spec:
+      containers:
+      - name: workflow-redis
+        image: redis:7-alpine
+
+        ports:
+        - containerPort: 6379

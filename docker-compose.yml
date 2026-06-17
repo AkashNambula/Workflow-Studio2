@@ -1,23 +1,48 @@
 services:
 
-  mongo:
-    image: mongo:7
-    container_name: workflow-mongo
-    ports:
-      - "27017:27017"
+mongo:
+image: mongo:7
+container_name: workflow-mongo
+ports:
+- "27017:27017"
 
-  backend:
-    build: ./backend
-    container_name: workflow-backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - mongo
+redis:
+image: redis:7-alpine
+container_name: workflow-redis
+ports:
+- "6379:6379"
 
-  frontend:
-    build: ./frontend
-    container_name: workflow-frontend
-    ports:
-      - "4173:4173"
-    depends_on:
-      - backend
+backend:
+build: ./backend
+container_name: workflow-backend
+ports:
+- "8000:8000"
+depends_on:
+- mongo
+- redis
+
+frontend:
+build: ./frontend
+container_name: workflow-frontend
+ports:
+- "4173:4173"
+depends_on:
+- backend
+
+celery-worker:
+build: ./backend
+container_name: workflow-celery-worker
+command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+depends_on:
+- redis
+- backend
+
+flower:
+image: mher/flower:2.0.1
+container_name: workflow-flower
+command: celery -A app.worker.celery_app flower --port=5555
+ports:
+- "5555:5555"
+depends_on:
+- redis
+- celery-worker

@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+    name: workflow-celery-worker
+
+spec:
+    replicas: 1
+
+    selector:
+        matchLabels:
+            app: workflow-celery-worker
+
+    template:
+        metadata:
+            labels:
+                app: workflow-celery-worker
+
+
+        spec:
+            containers:
+                      - name: workflow-celery-worker
+                        image: workflow-backend:latest
+                        command:
+                            - celery
+                            - -A
+                            - app.worker.celery_app
+                            - worker
+                            - --loglevel=info
+                            - --concurrency=2
+

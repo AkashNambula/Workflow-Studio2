@@ -1,3 +1,5 @@
+from xmlrpc import client
+
 from app.nodes.base import BaseNode
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -6,6 +8,7 @@ import os
 
 from pymongo import MongoClient
 from gridfs import GridFS
+from app.core.config import settings
 
 
 class PdfNode(BaseNode):
@@ -139,8 +142,8 @@ class PdfNode(BaseNode):
         c.save()
 
         # Store PDF in MongoDB GridFS
-        client = MongoClient("mongodb://localhost:27017")
-        db = client["workflow_studio"]
+        client = MongoClient(settings.MONGO_URI)
+        db = client[settings.DB_NAME]
         fs = GridFS(db)
 
         with open(file_path, "rb") as pdf_file:

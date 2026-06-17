@@ -1,4 +1,5 @@
 from app.nodes.base import BaseNode
+from app.core.config import settings
 import smtplib
 import os
 import time
@@ -19,8 +20,8 @@ class EmailNode(BaseNode):
         pdf_path=None
     ):
 
-        sender_email = "nambulaeswar2@gmail.com"
-        app_password = "krff ousx ppqp ulse"
+        sender_email = settings.EMAIL_ADDRESS
+        app_password = settings.EMAIL_PASSWORD
 
         body = f"""
 Hi {name},

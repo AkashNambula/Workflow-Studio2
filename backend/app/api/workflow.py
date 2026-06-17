@@ -1,3 +1,5 @@
+from unittest import result
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from typing import List, Dict, Any
@@ -12,6 +14,16 @@ from reportlab.pdfgen import canvas
 
 from app.db.database import db
 from app.core.security import get_current_user_claims
+from app.core.cache import (
+    get_cached,
+    set_cached,
+    delete_cached,
+    get_cache_stats
+)
+from app.worker.tasks import execute_workflow_task
+import uuid
+import json
+from celery.result import AsyncResult
 
 router = APIRouter(tags=["Workflows"])
 
@@ -108,7 +120,7 @@ def dispatch_automated_email(target_email: str, subject: str, message_body: str,
 # --- Core Router Endpoints ---
 
 @router.post("/create-workflow")
-def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends(get_current_user_claims)):
+async def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
     workflow_data = {
         "name": data.name if data.name.strip() else "Notification Workflow",
@@ -117,26 +129,68 @@ def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends(get_c
         "updated_by": token_payload.get("sub")
     }
     db.workflows.update_one({"name": workflow_data["name"]}, {"$set": workflow_data}, upsert=True)
+    await delete_cached("all_workflows")
     return {"message": "Workflow canvas layout saved completely!"}
 
 
 # 🟢 FIXED: ADDED MISSING ROUTE TO LOAD INDIVIDUAL WORKFLOWS AND STOP 404 ERRORS
 @router.get("/workflow/{name}")
-def get_single_workflow(name: str, token_payload: dict = Depends(get_current_user_claims)):
+async def get_single_workflow(
+    name: str,
+    token_payload: dict = Depends(get_current_user_claims)
+):
     verify_operational_clearance(token_payload)
+
+    cache_key = f"workflow:{name}"
+
+    cached_data = await get_cached(cache_key)
+
+    print("REDIS VALUE =", cached_data)
+
+    if cached_data:
+        print(f"CACHE HIT: {cache_key}")
+        return json.loads(cached_data)
+
+    print(f"CACHE MISS: {cache_key}")
+
     workflow = db.workflows.find_one({"name": name})
+
     if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow layout schema not found.")
-    return {
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow layout schema not found."
+        )
+
+    result = {
         "name": workflow.get("name", "Notification Workflow"),
         "nodes": workflow.get("nodes", []),
         "edges": workflow.get("edges", [])
     }
 
+    await set_cached(
+        cache_key,
+        json.dumps(result),
+        ttl=120
+    )
+
+    return result
+
 
 @router.post("/run-workflow/{workflow_name}")
 def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
+    run_id = str(uuid.uuid4())
+
+    execute_workflow_task.delay(
+        workflow_name,
+        data.dict(),
+        run_id
+    )
+
+    return {
+        "run_id": run_id,
+        "status": "queued"
+    }
     
     saved_workflow = db.workflows.find_one({"name": workflow_name})
     nodes_layout = saved_workflow.get("nodes", []) if saved_workflow else []
@@ -191,20 +245,90 @@ def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload
 
 
 @router.get("/workflows")
-def get_all_workflows(token_payload: dict = Depends(get_current_user_claims)):
+async def get_all_workflows(token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
+
+    cached_data = await get_cached("all_workflows")
+
+    if cached_data:
+        print("CACHE HIT: workflows")
+        return json.loads(cached_data)
+
+    print("CACHE MISS: workflows")
+
     cursor = db.workflows.find()
+
     output = []
+
     for w in cursor:
-        output.append({"name": w.get("name", "Notification Workflow"), "nodes": w.get("nodes", []), "edges": w.get("edges", [])})
+        output.append(
+            {
+                "name": w.get("name", "Notification Workflow"),
+                "nodes": w.get("nodes", []),
+                "edges": w.get("edges", [])
+            }
+        )
+
+    await set_cached(
+        "all_workflows",
+        json.dumps(output),
+        ttl=60
+    )
+
     return output
 
 
 @router.get("/history")
-def get_execution_history(token_payload: dict = Depends(get_current_user_claims)):
+async def get_execution_history(
+    token_payload: dict = Depends(get_current_user_claims)
+):
     verify_operational_clearance(token_payload)
+
+    cached_data = await get_cached("history")
+
+    if cached_data:
+        print("CACHE HIT: history")
+        return json.loads(cached_data)
+
+    print("CACHE MISS: history")
+
     cursor = db.history.find()
+
     output = []
+
     for h in cursor:
-        output.append({"workflow_name": h.get("workflow_name", "Unknown Workflow"), "status": h.get("status", "Completed")})
+        output.append(
+            {
+                "workflow_name": h.get(
+                    "workflow_name",
+                    "Unknown Workflow"
+                ),
+                "status": h.get(
+                    "status",
+                    "Completed"
+                )
+            }
+        )
+
+    await set_cached(
+        "history",
+        json.dumps(output),
+        ttl=30
+    )
+
     return output
+
+@router.get("/cache/stats")
+def cache_stats():
+    return get_cache_stats()
+
+@router.get("/run-status/{run_id}")
+def get_run_status(run_id: str):
+
+    task = AsyncResult(run_id)
+
+    return {
+        "run_id": run_id,
+        "status": task.status,
+        "result": task.result if task.ready() else None
+    }
