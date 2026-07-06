@@ -13,6 +13,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import UserManagement from "./UserManagement";
 import ConditionNodeCustom from "./ConditionNodeCustom";
+import AdminDashboard from "./AdminDashboard";
 
 let nodeId = 1;
 
@@ -584,6 +585,9 @@ function WorkflowBuilder() {
             </button>
             {showAccountMenu && (
               <div style={{ ...styles.accountDropdown, backgroundColor: activeTheme.dropdownBg, borderColor: activeTheme.border }}>
+                {userRole === "admin" && (
+                  <button style={{ ...styles.dropdownItem, color: activeTheme.textTitle, borderBottom: `1px solid ${activeTheme.border}` }} onClick={() => { setShowAccountMenu(false); window.location.href = "/admin-dashboard"; }}>Dashboard</button>
+                )}
                 <button style={{ ...styles.dropdownItem, color: activeTheme.textTitle, borderBottom: `1px solid ${activeTheme.border}` }} onClick={() => { setShowProfile(!showProfile); setShowAccountMenu(false); }}>My Profile</button>
                 <button style={{ ...styles.dropdownItem, color: activeTheme.textTitle, borderBottom: `1px solid ${activeTheme.border}` }} onClick={() => { setShowChangePassword(true); setShowAccountMenu(false); }}>Change Password</button>
                 <button style={styles.logoutButton} onClick={handleLogout}>Logout</button>
@@ -1093,6 +1097,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<WorkflowBuilder />} />
         <Route path="/dashboard" element={<WorkflowBuilder />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/user-management" element={<UserManagement />} />
       </Routes>
     </ReactFlowProvider>
