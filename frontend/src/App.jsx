@@ -23,6 +23,7 @@ const nodeTypes = {
 function WorkflowBuilder() {
   const navigate = useNavigate();
   const reactFlowWrapper = useRef(null);
+  const joiningDateInputRef = useRef(null);
   
   // 🟢 FIXED 1: Keeping state bindings matched with use context parameters
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
@@ -32,14 +33,13 @@ function WorkflowBuilder() {
   const [employeePhone, setEmployeePhone] = useState("");
   const [role, setRole] = useState("");
   const [joiningDate, setJoiningDate] = useState("");
-  const joiningDateRef = useRef(null);
   const [history, setHistory] = useState([]);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [savedWorkflows, setSavedWorkflows] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedNodeData, setSelectedNodeData] = useState(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
-  const [showEmployeeDetails, setShowEmployeeDetails] = useState(true);
+  const [showEmployeeDetails, setShowEmployeeDetails] = useState(false);
   const [showWorkflowControls, setShowWorkflowControls] = useState(false);
   const [showSavedWorkflows, setShowSavedWorkflows] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -95,6 +95,16 @@ function WorkflowBuilder() {
     const timer = setTimeout(() => setShowWelcome(false), 10000);
     return () => clearTimeout(timer);
   }, [navigate]);
+
+  const openJoiningDatePicker = () => {
+    const input = joiningDateInputRef.current;
+    if (!input) return;
+
+    input.focus();
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    }
+  };
 
   const loadWorkflow = async (name) => {
     try {
@@ -687,34 +697,6 @@ function WorkflowBuilder() {
 
         {/* WORKSPACE CANVAS PANEL */}
         <div ref={reactFlowWrapper} style={{ ...styles.canvas, backgroundColor: activeTheme.canvasBg, borderColor: activeTheme.canvasBorder, display: "flex", flexDirection: "column" }}>
-          {showEmployeeDetails && userRole !== "viewer" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px", padding: "15px", marginBottom: "0px" }}>
-              <input placeholder="Workflow Name" value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
-              <input placeholder="Employee Name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
-              <div>
-                <input placeholder="Employee Email" value={employeeEmail} onChange={(e) => setEmployeeEmail(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeeEmail && !employeeEmail.includes("@gmail.com") ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
-                {employeeEmail && !employeeEmail.includes("@gmail.com") && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Enter valid Gmail address</p>)}
-              </div>
-              <div>
-                <input placeholder="Employee Phone" value={employeePhone} onChange={(e) => { const digits = (e.target.value || "").replace(/\D/g, "").slice(0,10); setEmployeePhone(digits); }} maxLength={10} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeePhone && employeePhone.length !== 10 ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
-                {employeePhone && employeePhone.length !== 10 && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Phone number must be 10 digits</p>)}
-              </div>
-              <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, cursor: "pointer" }}>
-                <option value="">Select Role</option>
-                <option value="Python Developer">Python Developer</option>
-                <option value="AI/ML">AI/ML</option>
-                <option value="SAP ABAP">SAP ABAP</option>
-                <option value="SAP BASIS">SAP BASIS</option>
-              </select>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <input ref={joiningDateRef} type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, paddingRight: '40px' }} />
-                <button onClick={() => { try { if (joiningDateRef.current && joiningDateRef.current.showPicker) { joiningDateRef.current.showPicker(); } else if (joiningDateRef.current) { joiningDateRef.current.focus(); } } catch { if (joiningDateRef.current) joiningDateRef.current.focus(); } }} aria-label="Open calendar" style={{ position: 'absolute', right: 8, background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeTheme.textSub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                </button>
-              </div>
-            </div>
-          )}
-
           <div style={{ flex: 1, position: "relative" }}>
             <div style={styles.canvasBadge}>WORKFLOW PLAYGROUND CANVAS</div>
 
@@ -798,6 +780,54 @@ function WorkflowBuilder() {
             </div>
           </div>
         </div>
+
+        {showEmployeeDetails && userRole !== "viewer" && (
+          <div style={{ ...styles.employeeDetailsPanel, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border }}>
+            <div style={{ color: activeTheme.textTitle, fontSize: "14px", fontWeight: "700", marginBottom: "14px" }}>Employee Details</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+              <input placeholder="Workflow Name" value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
+              <input placeholder="Employee Name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
+              <div>
+                <input placeholder="Employee Email" value={employeeEmail} onChange={(e) => setEmployeeEmail(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeeEmail && !employeeEmail.includes("@gmail.com") ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
+                {employeeEmail && !employeeEmail.includes("@gmail.com") && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Enter valid Gmail address</p>)}
+              </div>
+              <div>
+                <input placeholder="Employee Phone" value={employeePhone} onChange={(e) => { const digits = (e.target.value || "").replace(/\D/g, "").slice(0,10); setEmployeePhone(digits); }} maxLength={10} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, border: employeePhone && employeePhone.length !== 10 ? "1px solid red" : `1px solid ${activeTheme.border}` }} />
+                {employeePhone && employeePhone.length !== 10 && (<p style={{ color: "red", fontSize: "12px", marginTop: "4px", marginBottom: 0 }}>Phone number must be 10 digits</p>)}
+              </div>
+              <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border, cursor: "pointer" }}>
+                <option value="">Select Role</option>
+                <option value="Python Developer">Python Developer</option>
+                <option value="AI/ML">AI/ML</option>
+                <option value="SAP ABAP">SAP ABAP</option>
+                <option value="SAP BASIS">SAP BASIS</option>
+              </select>
+              <div style={{ ...styles.datePickerWrap, backgroundColor: activeTheme.mainBg, borderColor: activeTheme.border }}>
+                <input
+                  ref={joiningDateInputRef}
+                  type="date"
+                  value={joiningDate}
+                  onChange={(e) => setJoiningDate(e.target.value)}
+                  className="joining-date-input"
+                  style={{ ...styles.dateInput, color: activeTheme.textTitle, colorScheme: isDarkTheme ? "dark" : "light" }}
+                  aria-label="Joining Date"
+                />
+                <button
+                  type="button"
+                  onClick={openJoiningDatePicker}
+                  style={{ ...styles.dateIconButton, color: activeTheme.textTitle, borderColor: activeTheme.border }}
+                  aria-label="Open joining date calendar"
+                  title="Open calendar"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
+                    <path d="M16 3v4M8 3v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* CHANGE PASSWORD MODAL */}
@@ -1030,9 +1060,13 @@ const styles = {
   sidebar: { width: "320px", paddingRight: "4px", overflowY: "auto", flexShrink: 0, display: "flex", flexDirection: "column", gap: "6px" },
   sectionBtn: { width: "100%", padding: "14px", border: "1px solid", borderRadius: "8px", fontWeight: "600", textAlign: "left", cursor: "pointer", fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.3s ease" },
   box: { padding: "16px", borderRadius: "8px", border: "1px solid", display: "flex", flexDirection: "column", gap: "10px", transition: "all 0.3s ease" },
+  employeeDetailsPanel: { width: "360px", flexShrink: 0, borderRadius: "12px", border: "1px solid", padding: "16px", boxSizing: "border-box", overflowY: "auto", transition: "all 0.3s ease" },
   helperText: { margin: "0 0 4px 0", fontSize: "12px" },
   emptyText: { margin: 0, fontSize: "12px", color: "#71717a", textAlign: "center", padding: "10px 0" },
   input: { width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid", fontSize: "13px", boxSizing: "border-box", outline: "none" },
+  datePickerWrap: { width: "100%", height: "39px", borderRadius: "6px", border: "1px solid", display: "flex", alignItems: "center", overflow: "hidden", boxSizing: "border-box" },
+  dateInput: { flex: 1, minWidth: 0, height: "100%", padding: "0 10px", border: "none", background: "transparent", fontSize: "13px", outline: "none", boxSizing: "border-box" },
+  dateIconButton: { width: "42px", height: "100%", border: "none", borderLeft: "1px solid", background: "transparent", cursor: "pointer", fontSize: "17px", display: "flex", alignItems: "center", justifyContent: "center" },
   drag: { padding: "12px", borderRadius: "6px", textAlign: "center", cursor: "grab", fontSize: "13px", fontWeight: "500", border: "1px solid" },
   actionDivider: { height: "1px", margin: "8px 0" },
   action: { width: "100%", padding: "10px", border: "1px solid #3b82f6", borderRadius: "6px", background: "transparent", color: "#3b82f6", cursor: "pointer", fontSize: "13px", fontWeight: "600", transition: "all 0.2s" },

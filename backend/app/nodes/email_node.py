@@ -9,6 +9,7 @@ from email.mime.application import MIMEApplication
 
 
 class EmailNode(BaseNode):
+
     def execute(
         self,
         receiver_email,
@@ -67,10 +68,7 @@ Naxrita Solutions Private Limited
 
             try:
 
-                print(
-                    f"Email Attempt {attempt + 1} "
-                    f"for {receiver_email}"
-                )
+                print(f"Email Attempt {attempt + 1} for {receiver_email}")
 
                 server = smtplib.SMTP(
                     "smtp.gmail.com",
@@ -92,32 +90,24 @@ Naxrita Solutions Private Limited
 
                 server.quit()
 
-                print(
-                    f"Email sent successfully to "
-                    f"{receiver_email}"
-                )
+                print(f"Email sent successfully to {receiver_email}")
 
                 return True
 
             except Exception as e:
 
-                print(
-                    f"Email Attempt {attempt + 1} Failed"
-                )
-
+                print(f"Email Attempt {attempt + 1} Failed")
                 print("Error:", e)
 
                 if attempt < max_retries - 1:
-
-                    print(
-                        "Retrying in 2 seconds..."
-                    )
-
+                    print("Retrying in 2 seconds...")
                     time.sleep(2)
 
-        print(
-            f"Email failed after "
-            f"{max_retries} attempts"
-        )
+        print(f"Email failed after {max_retries} attempts")
 
         return False
+
+    async def compensate(self, context):
+        print(
+            f"[SAGA] Compensation executed for Email Node : {self.node_id}"
+        )

@@ -24,6 +24,9 @@ from app.worker.tasks import execute_workflow_task
 import uuid
 import json
 from celery.result import AsyncResult
+from app.models.saga_state import SagaState
+from app.core.saga_manager import SagaManager
+from app.core.idempotency import acquire_lock
 
 router = APIRouter(tags=["Workflows"])
 
@@ -177,10 +180,33 @@ async def get_single_workflow(
 
 
 @router.post("/run-workflow/{workflow_name}")
-def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload: dict = Depends(get_current_user_claims)):
+async def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
     run_id = str(uuid.uuid4())
+    SagaState.create(run_id, workflow_name)
 
+    SagaManager.start(run_id)
+    idempotency_key = (
+        f"{workflow_name}:"
+        f"{data.employees[0]['email']}"
+    )
+
+    lock_acquired = await acquire_lock(
+        idempotency_key,
+        ttl=300
+    )
+
+    print(f"[IDEMPOTENCY] {idempotency_key}")
+    print(f"[IDEMPOTENCY] Lock = {lock_acquired}")
+
+    if not lock_acquired:
+        raise HTTPException(
+            status_code=409,
+            detail="Duplicate workflow request blocked."
+        )
+
+    print(f"[SAGA] Started: {run_id}")
+    print("[API] Sending task to Celery")
     execute_workflow_task.delay(
         workflow_name,
         data.dict(),

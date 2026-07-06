@@ -1,65 +1,54 @@
-from app.worker.celery_app import celery_app
+import asyncio
+
+from app.core.saga_manager import SagaManager
+from app.engine.executor import run_workflow
 from app.db.database import db
-from app.services.email_service import (
-    generate_welcome_pdf,
-    dispatch_automated_email
-)
+from app.worker.celery_app import celery_app
+
 
 @celery_app.task
 def execute_workflow_task(workflow_name, employee_data, run_id):
 
+    print("[CELERY] Worker started")
     print(f"Running workflow: {workflow_name}")
     print(f"Run ID: {run_id}")
 
+    # Start Saga
+    SagaManager.start(run_id)
+
+    # Fetch workflow
     workflow = db.workflows.find_one(
         {"name": workflow_name}
     )
 
-    print("Workflow Found =", workflow is not None)
-    print("Employee Data =", employee_data)
+    if not workflow:
+        SagaManager.fail(run_id)
+        return {
+            "status": "FAILED",
+            "message": "Workflow not found"
+        }
 
-    employees = employee_data.get("employees", [])
+    print("[CELERY] About to call run_workflow()")
 
-    for employee in employees:
-
-        emp_name = employee.get("name", "Employee")
-        emp_email = employee.get("email")
-        emp_role = employee.get("role", "Associate")
-
-        if not emp_email:
-            continue
-
-        pdf_path = generate_welcome_pdf(
-            employee_name=emp_name,
-            role=emp_role
+    # Execute workflow
+    logs = asyncio.run(
+        run_workflow(
+            workflow["nodes"],
+            workflow["edges"],
+            employee_data.get("employees", []),
+            run_id,
+            workflow_name
         )
-        
-        dispatch_automated_email(
-            target_email=emp_email,
-            subject=f"Welcome to the Team, {emp_name}! - HR Automation Studio",
-            message_body=f"""
-    Hello {emp_name},
+    )
 
-    Congratulations and welcome to the team!
+    # Mark Saga completed
+    SagaManager.complete(run_id)
 
-    Your onboarding workflow has been completed successfully.
-
-    Please find your official welcome letter attached with this email.
-
-    Role: {emp_role}
-
-    We are excited to have you join us and wish you great success in your new role.
-
-    Best Regards,
-    HR Automation Operations Team
-    """,
-            attachment_path=pdf_path
-        )
-
-        print(f"Email sent to {emp_email}")
+    print("[CELERY] Workflow execution completed")
 
     return {
         "run_id": run_id,
         "workflow_name": workflow_name,
-        "status": "SUCCESS"
+        "status": "SUCCESS",
+        "logs": logs
     }

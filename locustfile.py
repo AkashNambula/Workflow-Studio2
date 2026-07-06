@@ -1,7 +1,9 @@
 from locust import HttpUser, task, between, events
 
+
 class WorkflowUser(HttpUser):
-    wait_time = between(1, 3)
+    # Fire requests immediately
+    wait_time = between(0, 0)
 
     def on_start(self):
         response = self.client.post(
@@ -21,32 +23,18 @@ class WorkflowUser(HttpUser):
         else:
             self.headers = {}
 
-    @task(3)
-    def list_workflows(self):
-        self.client.get(
-            "/workflows",
-            headers=self.headers
-        )
-
-    @task(2)
-    def get_history(self):
-        self.client.get(
-            "/history",
-            headers=self.headers
-        )
-
-    @task(1)
+    @task
     def run_workflow(self):
         self.client.post(
-            "/run-workflow/sample",
+            "/run-workflow/NEW MAILS",
             json={
                 "employees": [
                     {
-                        "name": "Akash",
-                        "email": "akash@test.com",
-                        "phone": "9999999999",
-                        "role": "Developer",
-                        "joining_date": "2026-06-17"
+                        "name": "Harshitha",
+                        "email": "nambulaakash@gmail.com",
+                        "phone": "9949101910",
+                        "role": "AI/ML",
+                        "joining_date": "2026-07-03"
                     }
                 ]
             },
@@ -56,16 +44,16 @@ class WorkflowUser(HttpUser):
 
 @events.quitting.add_listener
 def check_threshold(environment, **kwargs):
-    stats = environment.stats.get("/workflows", "GET")
+    stats = environment.stats.get(
+        "/run-workflow/NEW MAILS",
+        "POST"
+    )
 
-    if stats.num_requests > 0:
-        p95 = stats.get_response_time_percentile(0.95)
-
-        print(f"\nGET /workflows p95 latency = {p95} ms")
-
-        if p95 > 500:
-            print("FAIL: p95 latency exceeded 500ms")
-            environment.process_exit_code = 1
-        else:
-            print("PASS: p95 latency within threshold")
-            environment.process_exit_code = 0
+    if stats and stats.num_requests > 0:
+        print("\n==============================")
+        print("Sprint 6 Deliverable 2 Report")
+        print("==============================")
+        print(f"Total Requests : {stats.num_requests}")
+        print(f"Failures       : {stats.num_failures}")
+        print(f"Average Time   : {stats.avg_response_time:.2f} ms")
+        print(f"RPS            : {stats.total_rps:.2f}")

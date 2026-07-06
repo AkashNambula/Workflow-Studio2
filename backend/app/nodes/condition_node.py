@@ -1,4 +1,7 @@
-class ConditionNode:
+from app.nodes.base import BaseNode
+
+
+class ConditionNode(BaseNode):
 
     def execute(
         self,
@@ -9,11 +12,9 @@ class ConditionNode:
         joining_date
     ):
 
-        # Name validation
         if not employee_name or len(employee_name.strip()) < 3:
             return False
 
-        # Email validation
         if not employee_email:
             return False
 
@@ -23,7 +24,6 @@ class ConditionNode:
         if "." not in employee_email:
             return False
 
-        # Phone validation
         if not employee_phone:
             return False
 
@@ -33,12 +33,15 @@ class ConditionNode:
         if len(employee_phone) != 10:
             return False
 
-        # Role validation
         if not employee_role:
             return False
 
-        # Joining date validation
         if not joining_date:
             return False
 
         return True
+
+    async def compensate(self, context):
+        print(
+            f"[SAGA] Compensation executed for Condition Node : {self.node_id}"
+        )

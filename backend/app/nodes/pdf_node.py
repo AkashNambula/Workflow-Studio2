@@ -12,6 +12,7 @@ from app.core.config import settings
 
 
 class PdfNode(BaseNode):
+
     def execute(
         self,
         employee_name,
@@ -21,6 +22,7 @@ class PdfNode(BaseNode):
         workflow_name,
         pdf_title
     ):
+
         folder = "generated_pdfs"
         os.makedirs(folder, exist_ok=True)
 
@@ -37,9 +39,14 @@ class PdfNode(BaseNode):
 
         y -= 40
         c.setFont("Helvetica-Bold", 15)
-        c.drawString(70, y, pdf_title if pdf_title else "Employee Onboarding Welcome Letter")
+        c.drawString(
+            70,
+            y,
+            pdf_title if pdf_title else "Employee Onboarding Welcome Letter"
+        )
+
         y -= 50
-        
+
         c.setFont("Helvetica", 11)
 
         lines = [
@@ -65,7 +72,7 @@ class PdfNode(BaseNode):
             "- Customer Excellence",
             "",
             "Employee Information:",
-            "...", # Keeps your original list structure intact
+            "...",
             f"Employee Name: {employee_name}",
             f"Employee Email: {employee_email}",
             f"Role: {role}",
@@ -130,23 +137,29 @@ class PdfNode(BaseNode):
         ]
 
         for line in lines:
+
             c.drawString(70, y, line)
+
             y -= 18
 
             if y < 60:
+
                 c.showPage()
+
                 y = height - 60
+
                 c.setFont("Helvetica", 11)
 
-        # Finalize and save the PDF after the loop finishes writing all text
         c.save()
 
-        # Store PDF in MongoDB GridFS
         client = MongoClient(settings.MONGO_URI)
+
         db = client[settings.DB_NAME]
+
         fs = GridFS(db)
 
         with open(file_path, "rb") as pdf_file:
+
             file_id = fs.put(
                 pdf_file,
                 filename=file_name
@@ -155,5 +168,19 @@ class PdfNode(BaseNode):
         print("PDF Stored In MongoDB")
         print("File ID:", file_id)
         print(f"PDF generated: {file_path}")
-        
+
         return file_path
+
+    async def compensate(self, context):
+
+        pdf_path = context.get("pdf_path")
+
+        if pdf_path and os.path.exists(pdf_path):
+
+            os.remove(pdf_path)
+
+            print(f"[SAGA] Deleted PDF : {pdf_path}")
+
+        else:
+
+            print("[SAGA] No PDF found to compensate.")

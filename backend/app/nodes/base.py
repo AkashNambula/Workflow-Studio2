@@ -1,11 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 
+
 class BaseNode(ABC):
     """
-    Abstract Base Class (ABC) enforcing the explicit software runtime contract 
-    for all derived automation block subclasses inside the Workflow Studio engine.
+    Base class for all workflow nodes.
+    Every node must implement execute() and compensate().
     """
+
     def __init__(
         self,
         node_id: str = "",
@@ -20,8 +22,11 @@ class BaseNode(ABC):
 
     @abstractmethod
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def compensate(self, context: Dict[str, Any]) -> None:
         """
-        Contract boundary signature ensuring every functional node handles 
-        context parameters asynchronously.
+        Undo the work performed by execute().
         """
         pass

@@ -16,3 +16,7 @@ body,
 body {
   background: #0f172a;
 }
+
+.joining-date-input::-webkit-calendar-picker-indicator {
+  display: none;
+}

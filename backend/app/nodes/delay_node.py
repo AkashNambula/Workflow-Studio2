@@ -3,7 +3,19 @@ import time
 
 
 class DelayNode(BaseNode):
+
     def execute(self, seconds=5):
+
         print(f"Waiting for {seconds} seconds...")
+
         time.sleep(seconds)
+
         print("Delay completed")
+
+        return True
+
+    async def compensate(self, context):
+
+        print(
+            f"[SAGA] Compensation executed for Delay Node : {self.node_id}"
+        )

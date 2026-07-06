@@ -82,3 +82,8 @@ class SmsNode(BaseNode):
         print("=================================\n")
 
         return False
+
+    async def compensate(self, context):
+        print(
+            f"[SAGA] Compensation executed for SMS Node : {self.node_id}"
+        )
