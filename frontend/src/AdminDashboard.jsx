@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
@@ -68,7 +68,20 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchData();
+    const loadData = async () => {
+      setError(null);
+      try {
+        const res = await axios.get("http://127.0.0.1:8000/admin/dashboard", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setData(res.data);
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -136,7 +149,7 @@ export default function AdminDashboard() {
             {activeView === "overview" && <OverviewView theme={theme} data={data} />}
             {activeView === "workflows" && <SavedWorkflowsPage />}
             {activeView === "history" && <ExecutionHistoryPage />}
-            {activeView === "recent" && <RecentRunsView theme={theme} data={data} />}
+            {activeView === "recent" && <RecentRunsView data={data} />}
             {activeView === "analytics" && <AnalyticsPage />}
           </div>
         </div>
@@ -303,7 +316,7 @@ function OverviewView({ theme, data }) {
   );
 }
 
-function RecentRunsView({ theme, data }) {
+function RecentRunsView({ data }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [timeRange, setTimeRange] = useState("all");
@@ -335,7 +348,7 @@ function RecentRunsView({ theme, data }) {
       .includes(appliedFilters.search.toLowerCase());
     const matchesStatus = appliedFilters.status === "All" || normalizedStatus(run.status) === appliedFilters.status;
     const timestamp = run.time ? new Date(run.time) : null;
-    const matchesTime = appliedFilters.timeRange === "all" || (timestamp && !Number.isNaN(timestamp.getTime()) && timestamp >= new Date(Date.now() - Number(appliedFilters.timeRange.replace("d", "")) * 86400000));
+    const matchesTime = appliedFilters.timeRange === "all" || (timestamp && !Number.isNaN(timestamp.getTime()) && timestamp >= new Date(new Date().getTime() - Number(appliedFilters.timeRange.replace("d", "")) * 86400000));
     return matchesSearch && matchesStatus && matchesTime;
   });
 
@@ -343,10 +356,6 @@ function RecentRunsView({ theme, data }) {
   const totalPages = Math.max(1, Math.ceil(filteredRuns.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const visibleRuns = filteredRuns.slice(startIndex, startIndex + itemsPerPage);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [appliedFilters]);
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) {
@@ -403,7 +412,7 @@ function RecentRunsView({ theme, data }) {
         </select>
       </div>
 
-      <div style={{ padding: "0 24px" }}><TimeRangeFilter value={timeRange} onChange={setTimeRange} onApply={() => setAppliedFilters({ search: searchTerm, status: statusFilter, timeRange })} onClear={() => { setSearchTerm(""); setStatusFilter("All"); setTimeRange("all"); setAppliedFilters({ search: "", status: "All", timeRange: "all" }); }} /></div>
+      <div style={{ padding: "0 24px" }}><TimeRangeFilter value={timeRange} onChange={setTimeRange} onApply={() => { setAppliedFilters({ search: searchTerm, status: statusFilter, timeRange }); setCurrentPage(1); }} onClear={() => { setSearchTerm(""); setStatusFilter("All"); setTimeRange("all"); setAppliedFilters({ search: "", status: "All", timeRange: "all" }); setCurrentPage(1); }} /></div>
 
       <div style={{ padding: "8px 24px 20px", minHeight: 520, display: "flex", flexDirection: "column", gap: 12 }}>
         {filteredRuns.length === 0 ? (
@@ -449,7 +458,7 @@ function RecentRunsView({ theme, data }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <div style={{ minWidth: 100, textAlign: "right" }}>
                     <div style={{ color: activeTheme.textSub, fontSize: 12, marginBottom: 4 }}>Status</div>
-                    <StatusBadge theme={theme} status={run.status} />
+                    <StatusBadge status={run.status} />
                   </div>
 
                   <div style={{ minWidth: 180, textAlign: "right" }}>
@@ -574,7 +583,7 @@ function StatCard({ theme, Icon, label, value, color }) {
   );
 }
 
-function StatusBadge({ theme, status }) {
+function StatusBadge({ status }) {
   const s = String(status).toLowerCase();
   let color = "#ef4444";
   let Icon = XCircle;

@@ -1,22 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function MyProfile() {
   const navigate = useNavigate();
-  const [user, setUser] = useState({ name: "User", email: "", role: "Viewer" });
-
-  useEffect(() => {
+  const [user] = useState(() => {
     try {
       const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      setUser({
+      return {
         name: storedUser.name || "User",
         email: storedUser.email || "",
         role: storedUser.role || "Viewer"
-      });
+      };
     } catch (error) {
       console.error(error);
+      return { name: "User", email: "", role: "Viewer" };
     }
-  }, []);
+  });
 
   const initials = useMemo(() => {
     const name = user.name || "User";

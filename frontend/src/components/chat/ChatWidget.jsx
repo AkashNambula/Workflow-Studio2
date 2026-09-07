@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { MessageCircleMore, ChevronDown, ChevronUp } from 'lucide-react';
 import ChatHeader from './ChatHeader';
@@ -10,7 +10,6 @@ import TypingIndicator from './TypingIndicator';
 
 export default function ChatWidget() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -145,7 +144,7 @@ export default function ChatWidget() {
         navigate(payload.navigation_route);
       }
       setMessages((prev) => [...prev, { id: Date.now() + 2, text: payload.reply || 'The assistant is ready to help.', isUser: false }]);
-    } catch (error) {
+    } catch {
       setMessages((prev) => [...prev, { id: Date.now() + 2, text: "I'm having trouble connecting to the assistant.\nYou can still use the quick actions below.", isUser: false }]);
     } finally {
       setIsTyping(false);
@@ -193,7 +192,7 @@ export default function ChatWidget() {
           flexDirection: 'column',
           transition: 'height 0.25s ease'
         }}>
-          <ChatHeader isOpen={isOpen} isMinimized={isMinimized} onToggle={() => setIsMinimized((value) => !value)} title={`Hello ${roleLabel}`} />
+          <ChatHeader isMinimized={isMinimized} onToggle={() => setIsMinimized((value) => !value)} title={`Hello ${roleLabel}`} />
 
           {!isMinimized && (
             <>

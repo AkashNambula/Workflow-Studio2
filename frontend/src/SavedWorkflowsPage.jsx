@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FolderOpen, Workflow, FileText, Briefcase } from "lucide-react";
@@ -13,7 +13,6 @@ export default function SavedWorkflowsPage() {
   const [timeRange, setTimeRange] = useState("all");
   const [appliedTimeRange, setAppliedTimeRange] = useState("all");
   const navigate = useNavigate();
-  const isDarkTheme = true;
 
   const activeTheme = {
     mainBg: "#0B0B0F",
@@ -53,14 +52,12 @@ export default function SavedWorkflowsPage() {
   const filteredWorkflows = workflows.filter((workflow) => {
     if (appliedTimeRange === "all") return true;
     const timestamp = workflow.updated_at || workflow.created_at;
-    return timestamp && new Date(timestamp) >= new Date(Date.now() - Number(appliedTimeRange.replace("d", "")) * 86400000);
+    return timestamp && new Date(timestamp) >= new Date(new Date().getTime() - Number(appliedTimeRange.replace("d", "")) * 86400000);
   });
   const itemsPerPage = 8;
   const totalPages = Math.max(1, Math.ceil(filteredWorkflows.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const visibleWorkflows = filteredWorkflows.slice(startIndex, startIndex + itemsPerPage);
-
-  useEffect(() => setCurrentPage(1), [appliedTimeRange]);
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) {
@@ -127,7 +124,7 @@ export default function SavedWorkflowsPage() {
           <p style={{ marginTop: 8, color: activeTheme.textSub, fontSize: 14, lineHeight: 1.6 }}>Your collection of automation workflows</p>
         </div>
       </div>
-      <TimeRangeFilter value={timeRange} onChange={setTimeRange} onApply={() => setAppliedTimeRange(timeRange)} onClear={() => { setTimeRange("all"); setAppliedTimeRange("all"); }} />
+      <TimeRangeFilter value={timeRange} onChange={setTimeRange} onApply={() => { setAppliedTimeRange(timeRange); setCurrentPage(1); }} onClear={() => { setTimeRange("all"); setAppliedTimeRange("all"); setCurrentPage(1); }} />
 
       {filteredWorkflows.length === 0 ? (
         <div

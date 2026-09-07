@@ -1,6 +1,6 @@
 import { MessageSquareText, Minimize2, Maximize2 } from 'lucide-react';
 
-export default function ChatHeader({ isOpen, isMinimized, onToggle, title }) {
+export default function ChatHeader({ isMinimized, onToggle, title }) {
   return (
     <div style={{
       display: 'flex',
