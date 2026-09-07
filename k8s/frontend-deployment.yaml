@@ -20,6 +20,6 @@ spec:
       containers:
       - name: workflow-frontend
         image: workflow-frontend:latest
-
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 4173

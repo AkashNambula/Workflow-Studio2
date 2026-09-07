@@ -1,17 +1,9 @@
-from unittest import result
+import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from typing import List, Dict, Any
-import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-
 from app.db.database import db
 from app.core.security import get_current_user_claims
 from app.core.cache import (
@@ -26,9 +18,10 @@ import json
 from celery.result import AsyncResult
 from app.models.saga_state import SagaState
 from app.core.saga_manager import SagaManager
-from app.core.idempotency import acquire_lock
+from app.core.idempotency import acquire_lock, release_lock
 
 router = APIRouter(tags=["Workflows"])
+logger = logging.getLogger(__name__)
 
 # --- Pydantic Request Schemas ---
 class WorkflowSaveRequest(BaseModel):
@@ -52,72 +45,22 @@ def verify_operational_clearance(token_payload: dict):
     return user
 
 
-# --- LIVE AUTOMATION ENGINE UTILITIES ---
-
-def generate_welcome_pdf(employee_name: str, role: str, filename: str = "Welcome_Letter.pdf"):
-    try:
-        pdf = canvas.Canvas(filename, pagesize=letter)
-        pdf.setTitle("HR Welcome Letter")
-        
-        pdf.setFont("Helvetica-Bold", 24)
-        pdf.drawString(100, 700, "HR AUTOMATION WORKFLOW STUDIO")
-        
-        pdf.setStrokeColorRGB(0.1, 0.5, 0.8)
-        pdf.line(100, 680, 500, 680)
-        
-        pdf.setFont("Helvetica", 14)
-        pdf.drawString(100, 630, f"Dear {employee_name},")
-        pdf.drawString(100, 590, f"Welcome to the team! We are thrilled to officially confirm your placement")
-        pdf.drawString(100, 570, f"as our newly appointed {role}.")
-        
-        pdf.drawString(100, 510, "Your onboard visual routing sequence tracking configuration has been")
-        pdf.drawString(100, 490, "successfully processed by the automated orchestrator.")
-        
-        pdf.setFont("Helvetica-Oblique", 12)
-        pdf.drawString(100, 400, "Best Regards,")
-        pdf.drawString(100, 380, "The HR Automation Operations Team")
-        
-        pdf.save()
-        return filename
-    except Exception as e:
-        print(f"[PDF Generation Fault]: {str(e)}")
-        return None
-
-
-def dispatch_automated_email(target_email: str, subject: str, message_body: str, attachment_path: str = None):
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-    sender_email = "nambulaeswar2@gmail.com"
-    sender_password = "krffousxppqpulse"
-
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = f"HR Automation Studio <{sender_email}>"
-        msg['To'] = target_email
-        msg['Subject'] = subject or "HR Automation Welcome Dispatch"
-        
-        msg.attach(MIMEText(message_body or "Your onboard workflow track sequence has finished processing.", 'plain'))
-        
-        if attachment_path and os.path.exists(attachment_path):
-            with open(attachment_path, "rb") as attachment:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', f"attachment; filename={os.path.basename(attachment_path)}")
-                msg.attach(part)
-        
-        print(f"📡 [SMTP Dispatch Routing]: Connecting to Gmail SMTP to mail {target_email}...")
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
-        server.starttls()  
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, [target_email], msg.as_string())
-        server.quit()
-        
-        print(f"✅ [SMTP Dispatch Success]: Live email sent successfully to {target_email}!")
-        return True
-    except Exception as e:
-        print(f"❌ [SMTP Dispatch Error]: {str(e)}")
-        return False
+async def acquire_execution_lock(idempotency_key: str) -> bool:
+    """Retry only transient Redis connection failures before queueing a run."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return await acquire_lock(idempotency_key, ttl=300)
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Unable to acquire execution lock (attempt %s of 3)",
+                attempt + 1,
+                exc_info=True,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.25 * (attempt + 1))
+    raise last_error
 
 
 # --- Core Router Endpoints ---
@@ -132,7 +75,12 @@ async def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends
         "updated_by": token_payload.get("sub")
     }
     db.workflows.update_one({"name": workflow_data["name"]}, {"$set": workflow_data}, upsert=True)
-    await delete_cached("all_workflows")
+    try:
+        await delete_cached("all_workflows")
+    except Exception:
+        # The workflow is already persisted; a cache outage must not turn a
+        # successful save into an API failure.
+        logger.exception("Unable to invalidate saved workflows cache")
     return {"message": "Workflow canvas layout saved completely!"}
 
 
@@ -146,7 +94,11 @@ async def get_single_workflow(
 
     cache_key = f"workflow:{name}"
 
-    cached_data = await get_cached(cache_key)
+    try:
+        cached_data = await get_cached(cache_key)
+    except Exception:
+        logger.exception("Workflow cache is unavailable; reading MongoDB directly")
+        cached_data = None
 
     print("REDIS VALUE =", cached_data)
 
@@ -170,11 +122,14 @@ async def get_single_workflow(
         "edges": workflow.get("edges", [])
     }
 
-    await set_cached(
-        cache_key,
-        json.dumps(result),
-        ttl=120
-    )
+    try:
+        await set_cached(
+            cache_key,
+            json.dumps(result),
+            ttl=120
+        )
+    except Exception:
+        logger.exception("Unable to cache workflow %s", name)
 
     return result
 
@@ -182,99 +137,67 @@ async def get_single_workflow(
 @router.post("/run-workflow/{workflow_name}")
 async def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
-    run_id = str(uuid.uuid4())
-    SagaState.create(run_id, workflow_name)
+    workflow = db.workflows.find_one({"name": workflow_name})
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow configuration was not found.")
+    if not data.employees or not data.employees[0].get("email", "").strip():
+        raise HTTPException(status_code=422, detail="A valid employee email is required to run the workflow.")
 
-    SagaManager.start(run_id)
-    idempotency_key = (
-        f"{workflow_name}:"
-        f"{data.employees[0]['email']}"
-    )
-
-    lock_acquired = await acquire_lock(
-        idempotency_key,
-        ttl=300
-    )
-
-    print(f"[IDEMPOTENCY] {idempotency_key}")
-    print(f"[IDEMPOTENCY] Lock = {lock_acquired}")
-
+    idempotency_key = f"workflow-execution:{workflow_name}:{data.employees[0]['email'].strip()}"
+    try:
+        lock_acquired = await acquire_execution_lock(idempotency_key)
+    except Exception as exc:
+        logger.exception("Execution queue is unavailable while acquiring the lock for %s", workflow_name)
+        raise HTTPException(status_code=503, detail="Workflow execution queue is temporarily unavailable.") from exc
     if not lock_acquired:
-        raise HTTPException(
-            status_code=409,
-            detail="Duplicate workflow request blocked."
-        )
+        raise HTTPException(status_code=409, detail="Workflow is already running for this employee.")
 
-    print(f"[SAGA] Started: {run_id}")
-    print("[API] Sending task to Celery")
-    execute_workflow_task.delay(
-        workflow_name,
-        data.dict(),
-        run_id
-    )
+    run_id = str(uuid.uuid4())
+    saga_created = False
+    try:
+        SagaState.create(run_id, workflow_name, data.employees)
+        saga_created = True
+        SagaManager.start(run_id)
+        execute_workflow_task.apply_async(
+            args=(workflow_name, data.dict(), run_id, idempotency_key),
+            retry=True,
+            retry_policy={
+                "max_retries": 3,
+                "interval_start": 0,
+                "interval_step": 0.2,
+                "interval_max": 0.5,
+            },
+        )
+    except Exception as exc:
+        # A broker outage must remain visible in the backend logs; the former
+        # broad handler discarded the only useful cause of a 503 response.
+        logger.exception("Unable to queue workflow run %s for %s", run_id, workflow_name)
+        if saga_created:
+            try:
+                SagaManager.fail(run_id)
+            except Exception:
+                logger.exception("Unable to mark workflow run %s as failed", run_id)
+        try:
+            await release_lock(idempotency_key)
+        except Exception:
+            logger.exception("Unable to release the execution lock for run %s", run_id)
+        raise HTTPException(status_code=503, detail="Workflow execution could not be queued.")
 
     return {
         "run_id": run_id,
         "status": "queued"
     }
-    
-    saved_workflow = db.workflows.find_one({"name": workflow_name})
-    nodes_layout = saved_workflow.get("nodes", []) if saved_workflow else []
-    
-    nodes_dump_string = str(nodes_layout).upper()
-    has_pdf_block = "PDF" in nodes_dump_string
-    has_email_block = "EMAIL" in nodes_dump_string or "MAIL" in nodes_dump_string
-
-    # Fallback to True if canvas layout properties were bypassed or empty
-    if not nodes_layout:
-        has_pdf_block = True
-        has_email_block = True
-
-    for employee in data.employees:
-        emp_name = employee.get("name", "New Employee")
-        emp_email = employee.get("email")
-        emp_role = employee.get("role", "Associate")
-        
-        if not emp_email:
-            continue
-            
-        pdf_path = None
-        email_subject = f"Welcome to the Team, {emp_name}! - HR Automation Studio"
-        email_message = f"Hello {emp_name},\n\nYour onboarding pipeline track has completed successfully. Please find your official orientation welcome letter attached below."
-        
-        if has_pdf_block:
-            pdf_path = generate_welcome_pdf(employee_name=emp_name, role=emp_role)
-            
-        if has_email_block or has_pdf_block:
-            dispatch_automated_email(
-                target_email=emp_email,
-                subject=email_subject,
-                message_body=email_message,
-                attachment_path=pdf_path
-            )
-            
-        if pdf_path and os.path.exists(pdf_path):
-            try:
-                os.remove(pdf_path)
-            except Exception:
-                pass
-
-    history_log = {
-        "workflow_name": workflow_name,
-        "status": "Executed Successfully",
-        "employee_count": len(data.employees),
-        "triggered_by": token_payload.get("sub")
-    }
-    db.history.insert_one(history_log)
-    
-    return {"status": "Success", "message": f"Automation chain '{workflow_name}' processed and emails dispatched successfully!"}
 
 
 @router.get("/workflows")
 async def get_all_workflows(token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
 
-    cached_data = await get_cached("all_workflows")
+    try:
+        cached_data = await get_cached("all_workflows")
+    except Exception:
+        logger.exception("Saved workflows cache is unavailable; reading MongoDB directly")
+        cached_data = None
 
     if cached_data:
         print("CACHE HIT: workflows")
@@ -287,30 +210,46 @@ async def get_all_workflows(token_payload: dict = Depends(get_current_user_claim
     output = []
 
     for w in cursor:
+        created_at = w.get("created_at") or w.get("updated_at") or getattr(w.get("_id"), "generation_time", None)
         output.append(
             {
                 "name": w.get("name", "Notification Workflow"),
                 "nodes": w.get("nodes", []),
-                "edges": w.get("edges", [])
+                "edges": w.get("edges", []),
+                "created_at": created_at.isoformat() if created_at else None,
+                "updated_at": w.get("updated_at").isoformat() if getattr(w.get("updated_at"), "isoformat", None) else None,
             }
         )
 
-    await set_cached(
-        "all_workflows",
-        json.dumps(output),
-        ttl=60
-    )
+    try:
+        await set_cached(
+            "all_workflows",
+            json.dumps(output),
+            ttl=60
+        )
+    except Exception:
+        logger.exception("Unable to cache saved workflows")
 
     return output
 
 
 @router.get("/history")
+# @router.get(
+#     "/history",
+#     tags=["History"]
+# )
 async def get_execution_history(
     token_payload: dict = Depends(get_current_user_claims)
 ):
     verify_operational_clearance(token_payload)
 
-    cached_data = await get_cached("history")
+    try:
+        cached_data = await get_cached("history")
+    except Exception:
+        # Execution history is backed by MongoDB; Redis is an optional cache.
+        # Do not fail the history page while Redis/DNS is recovering.
+        logger.exception("Execution history cache is unavailable; reading MongoDB directly")
+        cached_data = None
 
     if cached_data:
         print("CACHE HIT: history")
@@ -323,6 +262,7 @@ async def get_execution_history(
     output = []
 
     for h in cursor:
+        occurred_at = h.get("completed_at") or h.get("created_at") or h.get("updated_at") or getattr(h.get("_id"), "generation_time", None)
         output.append(
             {
                 "workflow_name": h.get(
@@ -332,15 +272,20 @@ async def get_execution_history(
                 "status": h.get(
                     "status",
                     "Completed"
-                )
+                ),
+                "employee": h.get("employee_name") or h.get("employee"),
+                "completed_at": occurred_at.isoformat() if getattr(occurred_at, "isoformat", None) else None,
             }
         )
 
-    await set_cached(
-        "history",
-        json.dumps(output),
-        ttl=30
-    )
+    try:
+        await set_cached(
+            "history",
+            json.dumps(output),
+            ttl=30
+        )
+    except Exception:
+        logger.exception("Unable to cache execution history")
 
     return output
 

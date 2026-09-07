@@ -19,7 +19,12 @@ spec:
     spec:
       containers:
       - name: workflow-backend
-        image: workflow-backend:latest
-
+        image: workflow-backend:analytics-fix
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MONGO_URI
+          value: "mongodb://host.docker.internal:27017"
+        - name: REDIS_HOST
+          value: "redis-service"
         ports:
         - containerPort: 8000

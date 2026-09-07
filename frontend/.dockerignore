@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.github
+build
+.next
+.nuxt
+.cache
+.pytest_cache

@@ -1,0 +1,45 @@
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { Activity, BriefcaseBusiness, CheckCircle2, CircleX, Percent, Users } from "lucide-react";
+import TimeRangeFilter from "./components/TimeRangeFilter";
+
+const API = "http://127.0.0.1:8000";
+const theme = { bg: "#0B0B0F", card: "#181820", border: "#2A2A35", text: "#F5F5F5", sub: "#9CA3AF", accent: "#A855F7", accentLight: "#E9D5FF", success: "#22C55E", failure: "#EF4444", neutral: "#737380" };
+const cardStyle = { background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 18, minWidth: 0 };
+
+function Card({ icon: Icon, label, value, color = theme.accent }) {
+  return <div style={cardStyle}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: theme.sub, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}><span>{label}</span><Icon size={18} color={color} /></div><div style={{ color, fontSize: 30, fontWeight: 800, marginTop: 12 }}>{value}</div></div>;
+}
+
+function Empty({ text = "No data available for this time range." }) { return <div style={{ color: theme.sub, minHeight: 120, display: "grid", placeItems: "center", textAlign: "center", fontSize: 13 }}>{text}</div>; }
+function Section({ title, subtitle, children }) { return <section style={cardStyle}><div style={{ marginBottom: 16 }}><h2 style={{ color: theme.text, fontSize: 16, margin: 0, fontWeight: 700 }}>{title}</h2>{subtitle && <p style={{ color: theme.sub, margin: "5px 0 0", fontSize: 12 }}>{subtitle}</p>}</div>{children}</section>; }
+
+function Bars({ items, colors = [theme.accent], valueKey = "count" }) {
+  if (!items?.length) return <Empty />;
+  const max = Math.max(...items.map((item) => item[valueKey] || 0), 1);
+  return <div style={{ display: "grid", gap: 12 }}>{items.map((item, index) => { const value = item[valueKey] || 0; return <div key={item.name || item.status || item.date}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, color: theme.sub, marginBottom: 6 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name || item.status || item.date}</span><strong style={{ color: theme.text }}>{value}</strong></div><div style={{ height: 8, background: "#23232D", borderRadius: 99 }}><div style={{ height: "100%", borderRadius: 99, width: `${(value / max) * 100}%`, background: colors[index % colors.length] }} /></div></div>; })}</div>;
+}
+
+function Trend({ points }) {
+  if (!points?.length) return <Empty />;
+  const max = Math.max(...points.map((point) => point.total), 1); const width = 600; const height = 180;
+  const coordinate = (point, index) => `${points.length === 1 ? width / 2 : index * width / (points.length - 1)},${height - point.total / max * (height - 24)}`;
+  const path = points.map((point, index) => `${index ? "L" : "M"}${coordinate(point, index)}`).join(" ");
+  return <><svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 190, overflow: "visible" }} aria-label="Execution trend"><path d={`M0 ${height - 1} H${width}`} stroke={theme.border} /><path d={path} fill="none" stroke={theme.accent} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />{points.map((point, index) => { const [cx, cy] = coordinate(point, index).split(","); return <circle key={point.date} cx={cx} cy={cy} r="4" fill={theme.accentLight}><title>{`${point.date}: ${point.total}`}</title></circle>; })}</svg><div style={{ display: "flex", justifyContent: "space-between", color: theme.sub, fontSize: 11, gap: 8 }}><span>{points[0].date}</span><span>{points[points.length - 1].date}</span></div></>;
+}
+
+function HistoryBars({ points }) {
+  if (!points?.length) return <Empty />;
+  const max = Math.max(...points.map((point) => point.total), 1);
+  return <div style={{ display: "grid", gap: 12 }}>{points.map((point) => <div key={point.date}><div style={{ display: "flex", justifyContent: "space-between", color: theme.sub, fontSize: 12, marginBottom: 6 }}><span>{point.date}</span><strong style={{ color: theme.text }}>{point.total}</strong></div><div style={{ display: "flex", height: 8, maxWidth: `${(point.total / max) * 100}%`, minWidth: point.total ? 5 : 0, overflow: "hidden", background: "#23232D", borderRadius: 99 }}>{point.successful > 0 && <span title={`Successful: ${point.successful}`} style={{ width: `${(point.successful / point.total) * 100}%`, background: theme.success }} />}{point.failed > 0 && <span title={`Failed: ${point.failed}`} style={{ width: `${(point.failed / point.total) * 100}%`, background: theme.failure }} />}{point.other > 0 && <span title={`Other: ${point.other}`} style={{ width: `${(point.other / point.total) * 100}%`, background: theme.neutral }} />}</div></div>)}</div>;
+}
+
+function formatDate(value) { if (!value) return "No recorded activity"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "No recorded activity" : date.toLocaleString(); }
+function RecentWorkflows({ workflows }) { if (!workflows?.length) return <Empty />; return <div style={{ display: "grid", gap: 10 }}>{workflows.map((workflow) => <div key={workflow.name} style={{ paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}><strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workflow.name}</strong><span style={{ color: theme.accentLight, whiteSpace: "nowrap" }}>{workflow.activity_count} executions</span></div><div style={{ color: theme.sub, fontSize: 12, marginTop: 5 }}>Latest activity: {formatDate(workflow.latest_activity)}</div></div>)}</div>; }
+
+export default function AnalyticsPage() {
+  const [range, setRange] = useState("all"); const [appliedRange, setAppliedRange] = useState("all"); const [data, setData] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
+  useEffect(() => { let alive = true; setLoading(true); setError(null); axios.get(`${API}/analytics?time_range=${appliedRange}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }).then((response) => alive && setData(response.data)).catch((err) => alive && setError(err.response?.data?.detail || "Unable to load analytics data. Please try again.")).finally(() => alive && setLoading(false)); return () => { alive = false; }; }, [appliedRange]);
+  const summary = data?.summary; const noData = data && summary.total_executions === 0 && summary.workflows === 0;
+  return <div style={{ background: theme.bg, color: theme.text, minHeight: "100%" }}><div style={{ marginBottom: 20 }}><h1 style={{ margin: 0, fontSize: 28 }}>Analytics</h1><p style={{ color: theme.sub, margin: "8px 0 0" }}>Live performance insights from workflow execution history.</p></div><TimeRangeFilter value={range} onChange={setRange} onApply={() => setAppliedRange(range)} onClear={() => { setRange("all"); setAppliedRange("all"); }} />{error ? <div role="alert" style={cardStyle}>{error}</div> : loading ? <div style={cardStyle}>Loading analytics…</div> : noData ? <div style={cardStyle}><Empty /></div> : <><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 14 }}><Card icon={Activity} label="Total Executions" value={summary.total_executions} /><Card icon={CheckCircle2} label="Successful" value={summary.successful_executions} color={theme.success} /><Card icon={CircleX} label="Failed" value={summary.failed_executions} color={theme.failure} /><Card icon={Percent} label="Success Rate" value={`${summary.success_rate}%`} /><Card icon={BriefcaseBusiness} label="Workflows" value={summary.workflows} /><Card icon={Users} label="Users / Operators" value={summary.users} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: 14, marginBottom: 14 }}><Section title="Execution Trend" subtitle="Total executions over time"><Trend points={data.trend} /></Section><Section title="Status Distribution" subtitle="Execution outcomes"><Bars items={data.status_distribution} colors={[theme.success, theme.failure, theme.neutral]} /></Section></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: 14 }}><Section title="Saved Workflows" subtitle={`${summary.workflows} saved workflows · activity updates for the applied range`}><Bars items={data.saved_workflows} valueKey="activity_count" /></Section><Section title="Recent Workflows" subtitle="Most recently saved or used workflows"><RecentWorkflows workflows={data.recent_workflows} /></Section></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}><Section title="Execution History" subtitle="Daily execution volume and outcomes"><HistoryBars points={data.execution_history} /></Section><Section title="Activity by Workflow" subtitle="Execution volume by workflow"><Bars items={data.workflow_activity} /></Section></div></>}</div>;
+}

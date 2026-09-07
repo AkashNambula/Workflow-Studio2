@@ -14,10 +14,13 @@ from jose import jwt
 router = APIRouter(tags=["Authentication"])
 security_scheme = HTTPBearer()
 
-# --- Pydantic Data Schemas ---
+
+# ---------- Pydantic Models ----------
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
 
 class RegisterRequest(BaseModel):
     name: str
@@ -26,31 +29,50 @@ class RegisterRequest(BaseModel):
     phone: str
     role: str = "Operator"
 
+
 class ChangePasswordRequest(BaseModel):
     email: EmailStr
     old_password: str
     new_password: str
 
 
-# --- Secure Global Token Decode Validation Dependency Helper ---
-def get_current_user_claims(token: HTTPAuthorizationCredentials = Depends(security_scheme)) -> dict:  
-    """
-    Decodes incoming authorization bearer headers using the crash-proof PyJWT setup.
-    """
+# ✅ NEW
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str
+
+
+# ---------- JWT Helper ----------
+def get_current_user_claims(
+    token: HTTPAuthorizationCredentials = Depends(security_scheme)
+):
+
+    print("TOKEN =", token.credentials)
+
     try:
-        payload = jwt.decode(token.credentials, JWT_SECRET, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token.credentials,
+            JWT_SECRET,
+            algorithms=[ALGORITHM]
+        )
+
+        print("PAYLOAD =", payload)
         return payload
-    except Exception:
+
+    except Exception as e:
+        print("JWT ERROR =", repr(e))
+
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Could not validate credentials structure access token matrix"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials"
         )
 
 
-# --- Public Auth Endpoints ---
+# ---------- Login ----------
 
 @router.post("/login")
 def login(data: LoginRequest):
+
     user = db.users.find_one({"email": data.email})
 
     if not user:
@@ -59,7 +81,10 @@ def login(data: LoginRequest):
             detail="Invalid Email or Password"
         )
 
-    if not verify_password(data.password, user["password"]):
+    if not verify_password(
+        data.password,
+        user["password"]
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid Email or Password"
@@ -67,11 +92,10 @@ def login(data: LoginRequest):
 
     token = create_access_token(subject=user["email"])
 
-    # 🟢 DUAL-TOKEN RETURN MATRIX: Maps to both naming standards to sync frontend state
     return {
         "message": "Login successful",
-        "token": token,            # Matches frontends using res.data.token
-        "access_token": token,     # Matches frontends using res.data.access_token
+        "token": token,
+        "access_token": token,
         "token_type": "bearer",
         "name": user.get("name", "Admin User"),
         "email": user["email"],
@@ -80,121 +104,241 @@ def login(data: LoginRequest):
     }
 
 
+# ---------- Change Own Password ----------
+
 @router.post("/change-password")
 def change_password(data: ChangePasswordRequest):
-    """
-    Updates a user's password securely in the database matrix loops.
-    """
+
     user = db.users.find_one({"email": data.email})
+
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="User profile not found in database records."
+            detail="User not found"
         )
 
-    if not verify_password(data.old_password, user["password"]):
+    if not verify_password(
+        data.old_password,
+        user["password"]
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Mismatched credentials: Old password is incorrect."
+            detail="Old password is incorrect"
         )
 
-    updated_password_hash = hash_password(data.new_password)
     db.users.update_one(
         {"email": data.email},
-        {"$set": {"password": updated_password_hash}}
+        {
+            "$set": {
+                "password": hash_password(data.new_password)
+            }
+        }
     )
 
-    return {"message": "Password updated successfully!"}
+    return {
+        "message": "Password updated successfully"
+    }
 
 
-# --- Admin Privileged RBAC Operations Matrix Endpoints ---
+# ---------- Admin Create User ----------
 
 @router.post("/admin/create-user")
 def admin_create_user(
-    user: RegisterRequest, 
+    user: RegisterRequest,
     token_payload: dict = Depends(get_current_user_claims)
 ):
-    """
-    Provision fresh operational user profiles inside the database collection cleanly.
-    """
+
     user_identity = token_payload.get("sub", "")
-    
-    # Check database record of the logged-in user to verify role privileges
-    current_admin = db.users.find_one({"email": user_identity})
-    if not current_admin or current_admin.get("role", "") != "Admin":
+
+    current_admin = db.users.find_one(
+        {
+            "email": user_identity
+        }
+    )
+
+    if (
+        not current_admin or
+        current_admin.get("role") != "Admin"
+    ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access Denied: Only Admin can provision profiles tracking organizational parameters."
-        )
-        
-    if user.role.strip() == "Admin":
-        raise HTTPException(
-            status_code=400,
-            detail="Security Fault: Multi-admin runtime initialization vector locked execution sequence."
+            status_code=403,
+            detail="Only Admin can create users."
         )
 
-    existing_user = db.users.find_one({"email": user.email})
-    if existing_user:
+    if user.role == "Admin":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create another Admin."
+        )
+
+    existing = db.users.find_one(
+        {
+            "email": user.email
+        }
+    )
+
+    if existing:
         raise HTTPException(
             status_code=400,
             detail="Email already exists"
         )
 
-    user_data = {
+    db.users.insert_one({
         "name": user.name,
         "email": user.email,
         "password": hash_password(user.password),
         "phone": user.phone,
         "role": user.role
+    })
+
+    return {
+        "message": "User created successfully"
     }
 
-    db.users.insert_one(user_data)
-    return {"message": f"{user.role} user registered successfully by Admin privileges matrix"}
 
+# ---------- Admin Get Users ----------
 
 @router.get("/admin/users")
-def admin_get_all_users(token_payload: dict = Depends(get_current_user_claims)):
+def admin_get_all_users(
+    token_payload: dict = Depends(get_current_user_claims)
+):
+
     user_identity = token_payload.get("sub", "")
-    current_admin = db.users.find_one({"email": user_identity})
-    
-    if not current_admin or current_admin.get("role", "") != "Admin":
+
+    current_admin = db.users.find_one(
+        {
+            "email": user_identity
+        }
+    )
+
+    if (
+        not current_admin or
+        current_admin.get("role") != "Admin"
+    ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Unauthorized access mapping sequence layer directory parameters."
+            status_code=403,
+            detail="Only Admin can access users."
         )
-        
-    users_cursor = db.users.find()
-    users_list = []
-    
-    for u in users_cursor:
-        users_list.append({
+
+    users = []
+
+    for u in db.users.find():
+
+        users.append({
             "id": str(u["_id"]),
             "name": u.get("name", ""),
-            "email": u["email"],
+            "email": u.get("email", ""),
             "phone": u.get("phone", ""),
             "role": u.get("role", "Operator")
         })
-        
-    return users_list
 
+    return users
+
+
+# ---------- Admin Delete User ----------
 
 @router.delete("/admin/user/{email}")
-def admin_delete_user(email: str, token_payload: dict = Depends(get_current_user_claims)):
-    user_identity = token_payload.get("sub", "")
-    current_admin = db.users.find_one({"email": user_identity})
-    
-    if not current_admin or current_admin.get("role", "") != "Admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Unauthorized drop configuration control command sequence request vector."
-        )
-        
-    target_user = db.users.find_one({"email": email})
-    if not target_user:
-        raise HTTPException(status_code=404, detail="Staff directory mapping profile reference not found")
-        
-    if target_user.get("role", "") == "Admin":
-        raise HTTPException(status_code=400, detail="Cannot purge primary authorization node reference from DB matrix loops.")
+def admin_delete_user(
+    email: str,
+    token_payload: dict = Depends(get_current_user_claims)
+):
 
-    db.users.delete_one({"email": email})
-    return {"message": f"Account profile trace matching target entity email user {email} dropped tracking execution layer completely."}
+    user_identity = token_payload.get("sub", "")
+
+    current_admin = db.users.find_one(
+        {
+            "email": user_identity
+        }
+    )
+
+    if (
+        not current_admin or
+        current_admin.get("role") != "Admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only Admin can delete users."
+        )
+
+    target = db.users.find_one(
+        {
+            "email": email
+        }
+    )
+
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    if target.get("role") == "Admin":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete Admin."
+        )
+
+    db.users.delete_one(
+        {
+            "email": email
+        }
+    )
+
+    return {
+        "message": "User deleted successfully"
+    }
+
+
+# ====================================================
+# ✅ NEW ADMIN RESET PASSWORD API
+# ====================================================
+
+@router.put("/admin/reset-password")
+def admin_reset_password(
+    data: ResetPasswordRequest,
+    token_payload: dict = Depends(get_current_user_claims)
+):
+
+    user_identity = token_payload.get("sub", "")
+
+    current_admin = db.users.find_one(
+        {
+            "email": user_identity
+        }
+    )
+
+    if (
+        not current_admin or
+        current_admin.get("role") != "Admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Only Admin can reset passwords."
+        )
+
+    target_user = db.users.find_one(
+        {
+            "email": data.email
+        }
+    )
+
+    if not target_user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found."
+        )
+
+    db.users.update_one(
+        {
+            "email": data.email
+        },
+        {
+            "$set": {
+                "password": hash_password(data.new_password)
+            }
+        }
+    )
+
+    return {
+        "message": "Password reset successfully."
+    }

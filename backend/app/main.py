@@ -14,9 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import db
 from app.api.auth import router as auth_router
 from app.api.workflow import router as workflow_router
-from app.api.run import router as run_router
 from app.api.history import router as history_router
+from app.api.dashboard import router as dashboard_router
+from app.api.analytics import router as analytics_router
 from app.websocket.live_logs import router as websocket_router
+from app.chatbot.router import router as chatbot_router
 from app.core.cache import test_redis
 from app.scheduler.scheduler import start_scheduler
 
@@ -38,7 +40,13 @@ async def startup_event():
 
 
 # CORS Configuration
-origins = ["*"]
+origins = [
+    "http://localhost:4173",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,9 +59,11 @@ app.add_middleware(
 # API Routers
 app.include_router(auth_router)
 app.include_router(workflow_router)
-app.include_router(run_router)
 app.include_router(history_router)
+app.include_router(dashboard_router)      # ✅ New Dashboard Router
+app.include_router(analytics_router)
 app.include_router(websocket_router)
+app.include_router(chatbot_router)
 
 
 @app.get("/")

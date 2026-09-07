@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, Routes, Route } from "react-router-dom";
+import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import axios from "axios";
 import ReactFlow, {
   addEdge,
@@ -14,6 +14,12 @@ import "reactflow/dist/style.css";
 import UserManagement from "./UserManagement";
 import ConditionNodeCustom from "./ConditionNodeCustom";
 import AdminDashboard from "./AdminDashboard";
+import SavedWorkflowsPage from "./SavedWorkflowsPage";
+import ExecutionHistoryPage from "./ExecutionHistoryPage";
+import MyProfile from "./MyProfile";
+import AnalyticsPage from "./AnalyticsPage";
+import ChatWidget from "./components/chat/ChatWidget";
+import { getValidAuthToken, handleUnauthorized } from "./authSession";
 
 let nodeId = 1;
 
@@ -23,6 +29,7 @@ const nodeTypes = {
 
 function WorkflowBuilder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const reactFlowWrapper = useRef(null);
   const joiningDateInputRef = useRef(null);
   
@@ -56,6 +63,7 @@ function WorkflowBuilder() {
   const [isRunning, setIsRunning] = useState(false);
   const [, setLastSavedAt] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const notificationIdRef = useRef(0);
   const [confirmState, setConfirmState] = useState({ open: false, message: "", resolve: null });
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -65,27 +73,31 @@ function WorkflowBuilder() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const fetchHistory = async () => {
+    const token = getValidAuthToken();
+    if (!token) { navigate("/login", { replace: true }); return; }
     try {
-      const token = localStorage.getItem("token");
       const res = await axios.get("http://127.0.0.1:8000/history", { headers: { Authorization: `Bearer ${token}` } });
       setHistory(res.data);
     } catch (e) {
+      if (handleUnauthorized(e, navigate)) return;
       console.error(e);
     }
   };
 
   const fetchSavedWorkflows = async () => {
+    const token = getValidAuthToken();
+    if (!token) { navigate("/login", { replace: true }); return; }
     try {
-      const token = localStorage.getItem("token");
       const res = await axios.get("http://127.0.0.1:8000/workflows", { headers: { Authorization: `Bearer ${token}` } });
       setSavedWorkflows(res.data);
     } catch (e) {
+      if (handleUnauthorized(e, navigate)) return;
       console.error(e);
     }
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getValidAuthToken();
     if (!token) { navigate("/login"); return; }
     
     (async () => {
@@ -158,6 +170,21 @@ function WorkflowBuilder() {
     markerEnd: { type: MarkerType.ArrowClosed, color: isDarkTheme ? "#ffffff" : "#0f172a" },
     style: { stroke: isDarkTheme ? "#ffffff" : "#0f172a", strokeWidth: 2 }
   }, eds)), [setEdges, isDarkTheme]);
+
+  // Track if we've already loaded workflow from navigation state to avoid infinite loops
+  const hasLoadedFromHistory = useRef(false);
+
+  // Load workflow from navigation state when coming from Execution History
+  useEffect(() => {
+    const workflowNameFromHistory = location.state?.workflowName;
+    if (workflowNameFromHistory && !hasLoadedFromHistory.current) {
+      hasLoadedFromHistory.current = true;
+      loadWorkflow(workflowNameFromHistory);
+      // Clear the navigation state to prevent reloading on re-renders
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - run only once on mount
 
   const onDragStart = (event, nodeType) => {
     event.dataTransfer.setData("application/reactflow", nodeType);
@@ -290,7 +317,8 @@ function WorkflowBuilder() {
   const runWorkflow = async () => {
     if (isRunning) return;
     if (!workflowName || !employeeName || !employeeEmail || !employeePhone) { addNotification("Please fill workflow and employee fields before running.", "error"); return; }
-    const token = localStorage.getItem("token");
+    const token = getValidAuthToken();
+    if (!token) { navigate("/login", { replace: true }); return; }
     setIsRunning(true);
     setExecutionLogs([]);
     try {
@@ -335,9 +363,14 @@ function WorkflowBuilder() {
       addNotification("Workflow execution kicked off live!", "success");
       fetchHistory();
     } catch (e) {
-      console.error(e);
-      addNotification("Workflow execution failed. Please verify configurations.", "error");
       setIsRunning(false);
+      if (handleUnauthorized(e, navigate)) return;
+      console.error(e);
+      const detail = e.response?.data?.detail;
+      addNotification(
+        detail ? `Workflow execution failed: ${detail}` : "Workflow execution failed. Please verify configurations.",
+        "error"
+      );
     }
   };
 
@@ -367,9 +400,9 @@ function WorkflowBuilder() {
   };
 
   const addNotification = (message, type = "info") => {
-    const id = Date.now() + Math.random();
+    const id = ++notificationIdRef.current;
     setNotifications((n) => [...n, { id, message, type }]);
-    setTimeout(() => setNotifications((n) => n.filter((x) => x.id !== id)), 4500);
+    setTimeout(() => setNotifications((n) => n.filter((x) => x.id !== id)), 3000);
   };
 
   useEffect(() => {
@@ -400,12 +433,38 @@ function WorkflowBuilder() {
   const handleConfigSave = () => {
     if (!selectedNodeData) return;
     let updatedData = { ...selectedNodeData.data };
+    const type = getNodeType(selectedNodeData);
+
     if (updatedData.label.includes("Delay") || updatedData.delay !== undefined) {
       updatedData.label = `⏳ Delay (${updatedData.delay || 0}s)`;
     }
+
     const errors = validateNodeData({ ...selectedNodeData, data: updatedData });
     if (errors.length > 0) {
       setSelectedNodeErrors(errors);
+
+      if (type === "email") {
+        addNotification(
+          !updatedData.toAddress?.trim()
+            ? "Please enter an email address first."
+            : "Please enter a valid email address first.",
+          "error"
+        );
+      } else if (type === "sms") {
+        const phoneDigits = (updatedData.phoneNumber || "").replace(/\D/g, "");
+        if (!phoneDigits) {
+          addNotification("Please enter a phone number first.", "error");
+        } else if (phoneDigits.length !== 10) {
+          addNotification("Please enter a valid phone number first.", "error");
+        } else {
+          addNotification("Please enter a message first.", "error");
+        }
+      } else if (type === "pdf") {
+        addNotification("Please complete the required PDF details first.", "error");
+      } else if (type === "delay") {
+        addNotification("Please enter a valid delay value first.", "error");
+      }
+
       return;
     }
     setSelectedNodeErrors([]);
@@ -415,7 +474,50 @@ function WorkflowBuilder() {
         n.id === selectedNodeData.id ? { ...n, data: updatedData } : n
       )
     );
+    setSelectedNodeData((prev) => (prev ? { ...prev, data: updatedData } : prev));
+
+    const successMessages = {
+      email: "Email node saved successfully.",
+      sms: "SMS node saved successfully.",
+      pdf: "PDF node saved successfully.",
+      delay: "Delay node saved successfully."
+    };
+    if (successMessages[type]) addNotification(successMessages[type], "success");
+
     setShowConfigPanel(false);
+  };
+
+  const handleNodeClick = (e, node) => {
+    const currentNode = nodes.find((n) => n.id === node.id) || node;
+    setSelectedNode(node.id);
+    setSelectedNodeData(currentNode);
+    setShowConfigPanel(true);
+  };
+
+  // Save handler for Employee Details panel (UI-only: validates and closes panel)
+  const handleEmployeeSave = () => {
+    const requiredDetails = [workflowName, employeeName, employeeEmail, employeePhone, role, joiningDate];
+    if (requiredDetails.some((detail) => !detail.trim())) {
+      addNotification("Please fill in all required employee details before saving.", "error");
+      return;
+    }
+
+    // Basic validation: email must contain '@' and phone (if present) should be 10 digits
+    const emailOk = !employeeEmail || employeeEmail.includes("@");
+    const phoneDigits = (employeePhone || "").replace(/\D/g, "");
+    const phoneOk = !employeePhone || phoneDigits.length === 10;
+    if (!emailOk) {
+      addNotification("Please enter a valid email address.", "error");
+      return;
+    }
+    if (!phoneOk) {
+      addNotification("Phone number must contain exactly 10 digits.", "error");
+      return;
+    }
+
+    // UI-only save: show success and close the panel. Do not call backend.
+    addNotification("Employee details saved.", "success");
+    setShowEmployeeDetails(false);
   };
 
   const getNodeType = (nodeData) => {
@@ -447,6 +549,7 @@ function WorkflowBuilder() {
 
   const updateField = (field, value) => {
     setSelectedNodeData((prev) => {
+      if (!prev) return prev;
       const updated = { ...prev, data: { ...prev.data, [field]: value } };
       const errs = validateNodeData(updated);
       setSelectedNodeErrors(errs);
@@ -665,9 +768,18 @@ function WorkflowBuilder() {
 
           {userRole === "admin" && (
             <button style={{ ...styles.sectionBtn, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border, color: showUserManagement ? "#a855f7" : (isDarkTheme ? "#e2e8f0" : "#0f172a") }} onClick={() => setShowUserManagement(!showUserManagement)}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>👥 <span>User Management</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H2v-2a4 4 0 014-4h4a4 4 0 014 4v2H9zm0-10a4 4 0 100-8 4 4 0 000 8zm8 2a3 3 0 100-6 3 3 0 000 6z" /></svg>
+                <span>User Management</span>
+              </div>
               <span>{showUserManagement ? "▲" : "▼"}</span>
             </button>
+          )}
+
+          {userRole === "admin" && showUserManagement && (
+            <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
+              <button style={styles.action} onClick={() => navigate("/user-management")}>Create / Manage Users</button>
+            </div>
           )}
 
           {userRole === "admin" && (
@@ -692,11 +804,6 @@ function WorkflowBuilder() {
             </div>
           )}
 
-          {userRole === "admin" && showUserManagement && (
-            <div style={{ ...styles.box, backgroundColor: activeTheme.boxBg, borderColor: activeTheme.border }}>
-              <button style={styles.action} onClick={() => navigate("/user-management")}>Create / Manage Users</button>
-            </div>
-          )}
         </div>
 
         {/* WORKSPACE CANVAS PANEL */}
@@ -727,11 +834,7 @@ function WorkflowBuilder() {
               onInit={setReactFlowInstance} onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange} onConnect={onConnect}
               onDrop={onDrop} onDragOver={onDragOver}
-              onNodeClick={(e, node) => {
-                setSelectedNode(node.id);
-                setSelectedNodeData(node);
-                setShowConfigPanel(true);
-              }}
+              onNodeClick={handleNodeClick}
               onNodeMouseEnter={handleNodeMouseEnter}
               onNodeMouseMove={handleNodeMouseMove}
               onNodeMouseLeave={handleNodeMouseLeave}
@@ -745,14 +848,14 @@ function WorkflowBuilder() {
               <Background color={activeTheme.dotColor} gap={20} size={1} variant="dots" />
             </ReactFlow>
 
-            {/* Bottom-right fixed Clear / Export buttons */}
-            <div style={{ position: 'absolute', right: 20, bottom: 20, zIndex: 80, display: 'flex', gap: 10 }}>
-              <button onClick={clearCanvas} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}>Clear</button>
-              <button onClick={exportWorkflow} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #64748b', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontWeight: 700 }}>Export</button>
+            {/* Top-right fixed Clear / Export buttons */}
+            <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 80, display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button onClick={clearCanvas} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #ef4444', background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer', fontWeight: 700, minWidth: 96 }}>Clear</button>
+              <button onClick={exportWorkflow} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #64748b', background: 'rgba(148,163,184,0.08)', color: '#94a3b8', cursor: 'pointer', fontWeight: 700, minWidth: 96 }}>Export</button>
             </div>
 
             {/* Notifications stack */}
-            <div style={{ position: "absolute", top: 16, right: 16, zIndex: 60, display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ position: "fixed", top: 24, right: 24, zIndex: 10000, display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
               {notifications.map((n) => (
                 <div key={n.id} style={{ minWidth: "220px", padding: "10px 12px", borderRadius: "8px", color: "#fff", background: n.type === 'error' ? '#ef4444' : n.type === 'success' ? '#16a34a' : '#2563eb', boxShadow: '0 6px 18px rgba(0,0,0,0.3)' }}>
                   {n.message}
@@ -786,9 +889,10 @@ function WorkflowBuilder() {
         </div>
 
         {showEmployeeDetails && userRole !== "viewer" && (
-          <div style={{ ...styles.employeeDetailsPanel, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border }}>
+          <div style={{ ...styles.employeeDetailsPanel, backgroundColor: activeTheme.panelBg, borderColor: activeTheme.border, display: "flex", flexDirection: "column", height: "100%" }}>
             <div style={{ color: activeTheme.textTitle, fontSize: "14px", fontWeight: "700", marginBottom: "14px" }}>Employee Details</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+            <div style={{ padding: "0 0 12px 0", flex: 1, overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
               <input placeholder="Workflow Name" value={workflowName} onChange={(e) => setWorkflowName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
               <input placeholder="Employee Name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} style={{ ...styles.input, backgroundColor: activeTheme.mainBg, color: activeTheme.textTitle, borderColor: activeTheme.border }} />
               <div>
@@ -829,6 +933,23 @@ function WorkflowBuilder() {
                   </svg>
                 </button>
               </div>
+              </div>
+            </div>
+
+            {/* Footer: Save / Close (UI-only, matches Node Configuration) */}
+            <div style={{ padding: "16px 20px", borderTop: `1px solid ${isDarkTheme ? "#27272a" : "#e2e8f0"}`, background: isDarkTheme ? "#18181b" : "#f8fafc", display: "flex", gap: "10px" }}>
+              <button
+                onClick={handleEmployeeSave}
+                style={{ flex: 1, padding: "11px", borderRadius: "8px", border: "none", background: "#3f424c", color: "#f5f5f5", cursor: "pointer", fontSize: "13px", fontWeight: "700", letterSpacing: "0.3px" }}
+              >
+                ✓ Save Changes
+              </button>
+              <button
+                onClick={() => setShowEmployeeDetails(false)}
+                style={{ flex: 1, padding: "11px", borderRadius: "8px", border: `1px solid ${isDarkTheme ? "#3f3f46" : "#cbd5e1"}`, background: "transparent", color: isDarkTheme ? "#a1a1aa" : "#64748b", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}
+              >
+                Close
+              </button>
             </div>
           </div>
         )}
@@ -1029,8 +1150,7 @@ function WorkflowBuilder() {
           <div style={{ padding: "16px 20px", borderTop: `1px solid ${isDarkTheme ? "#27272a" : "#e2e8f0"}`, background: isDarkTheme ? "#18181b" : "#f8fafc", display: "flex", gap: "10px" }}>
             <button
               onClick={handleConfigSave}
-              disabled={selectedNodeErrors && selectedNodeErrors.length > 0}
-              style={{ flex: 1, padding: "11px", borderRadius: "8px", border: "none", background: selectedNodeErrors && selectedNodeErrors.length > 0 ? '#6b7280' : '#a855f7', color: "#ffffff", cursor: selectedNodeErrors && selectedNodeErrors.length > 0 ? 'not-allowed' : 'pointer', fontSize: "13px", fontWeight: "700", letterSpacing: "0.3px" }}
+              style={{ flex: 1, padding: "11px", borderRadius: "8px", border: "none", background: '#a855f7', color: "#ffffff", cursor: 'pointer', fontSize: "13px", fontWeight: "700", letterSpacing: "0.3px" }}
             >
               ✓ Save Changes
             </button>
@@ -1099,7 +1219,12 @@ export default function App() {
         <Route path="/dashboard" element={<WorkflowBuilder />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/user-management" element={<UserManagement />} />
+        <Route path="/saved-workflows" element={<SavedWorkflowsPage />} />
+        <Route path="/execution-history" element={<ExecutionHistoryPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/my-profile" element={<MyProfile />} />
       </Routes>
+      <ChatWidget />
     </ReactFlowProvider>
   );
 }

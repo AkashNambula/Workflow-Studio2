@@ -13,4 +13,4 @@ spec:
       port: 4173
       targetPort: 4173
 
-  type: NodePort
+  type: LoadBalancer

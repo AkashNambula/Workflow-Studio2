@@ -19,13 +19,19 @@ spec:
 
         spec:
             containers:
-                      - name: workflow-celery-worker
-                        image: workflow-backend:latest
-                        command:
-                            - celery
-                            - -A
-                            - app.worker.celery_app
-                            - worker
-                            - --loglevel=info
-                            - --concurrency=2
+            - name: workflow-celery-worker
+              image: workflow-backend:latest
+              imagePullPolicy: IfNotPresent
+              env:
+              - name: MONGO_URI
+                value: "mongodb://host.docker.internal:27017"
+              - name: REDIS_HOST
+                value: "redis-service"
+              command:
+                  - celery
+                  - -A
+                  - app.worker.celery_app
+                  - worker
+                  - --loglevel=info
+                  - --concurrency=2
 

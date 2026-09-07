@@ -17,16 +17,22 @@ class SagaState:
     collection = db.saga_states
 
     @classmethod
-    def create(cls, run_id: str, workflow_name: str):
+    def create(
+    cls,
+    run_id: str,
+    workflow_name: str,
+    employees: list
+):
         cls.collection.insert_one({
-            "run_id": run_id,
-            "workflow_name": workflow_name,
-            "status": SagaStatus.PENDING.value,
-            "completed_nodes": [],
-            "current_node": None,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        })
+        "run_id": run_id,
+        "workflow_name": workflow_name,
+        "employees": employees,
+        "status": SagaStatus.PENDING.value,
+        "completed_nodes": [],
+        "current_node": None,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    })
 
     @classmethod
     def update_status(cls, run_id: str, status: SagaStatus):
@@ -65,6 +71,8 @@ class SagaState:
                 }
             }
         )
+
+
 
     @classmethod
     def get(cls, run_id: str):

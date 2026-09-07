@@ -2,7 +2,7 @@ from locust import HttpUser, task, between, events
 
 
 class WorkflowUser(HttpUser):
-    # Fire requests immediately
+    # Fire requests continuously
     wait_time = between(0, 0)
 
     def on_start(self):
@@ -51,9 +51,10 @@ def check_threshold(environment, **kwargs):
 
     if stats and stats.num_requests > 0:
         print("\n==============================")
-        print("Sprint 6 Deliverable 2 Report")
+        print("Sprint 6 Deliverable 4 Report")
         print("==============================")
         print(f"Total Requests : {stats.num_requests}")
         print(f"Failures       : {stats.num_failures}")
         print(f"Average Time   : {stats.avg_response_time:.2f} ms")
         print(f"RPS            : {stats.total_rps:.2f}")
+        print("==============================")

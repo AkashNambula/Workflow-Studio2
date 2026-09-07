@@ -7,6 +7,10 @@ router = APIRouter()
 
 
 @router.get("/history")
+# @router.get(
+#     "/history",
+#     tags=["History"]
+# )
 def get_history(user=Depends(require_admin)):
     history = list(db.workflow_runs.find({}, {"_id": 0}))
-    return history
+    return history 

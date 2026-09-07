@@ -24,8 +24,8 @@ async def async_email_dispatch(
     role: str,
     date: str,
     pdf: Any
-) -> None:
-    EmailNode().execute(
+) -> bool:
+    delivered = EmailNode().execute(
         receiver_email=email,
         name=name,
         role=role,
@@ -34,6 +34,9 @@ async def async_email_dispatch(
         message=node_data.get("message", "Welcome to our company"),
         pdf_path=pdf
     )
+    if not delivered:
+        raise RuntimeError("Email delivery failed. Check SMTP configuration.")
+    return True
 
 
 @retryable(max_attempts=3, base_delay=1.0)
@@ -74,6 +77,11 @@ async def run_workflow(
             if edges and isinstance(edges[0], dict)
             else (getattr(edges[0], "source", None) if edges else None)
         )
+        saga = SagaManager.get_state(run_id)
+
+        if saga and saga.get("current_node"):
+            current_node_id = str(saga["current_node"])
+            print(f"[SAGA] Resuming from node: {current_node_id}")
 
         generated_pdf = None
 
@@ -87,6 +95,30 @@ async def run_workflow(
 
             current_node = node_map[current_node_id]
             
+            completed_node_ids = {
+                str(node["node_id"])
+                for node in saga.get("completed_nodes", [])
+            } if saga else set()
+
+            if current_node_id in completed_node_ids:
+                print(f"[SAGA] Skipping completed node: {current_node_id}")
+
+                next_edge = next(
+                    (
+                        edge
+                        for edge in edges
+                        if str(edge.get("source")) == current_node_id
+                    ),
+                    None
+                )
+
+                current_node_id = (
+                    str(next_edge.get("target"))
+                    if next_edge
+                    else None
+                )
+
+                continue
 
             node_type_normalized = str(
                 current_node.get("type", "")
@@ -239,9 +271,11 @@ async def run_workflow(
 
                 elif "email" in node_type_normalized:
 
+                    recipient_email = current_node.get("toAddress") or emp_email
+
                     await async_email_dispatch(
                         current_node,
-                        emp_email,
+                        recipient_email,
                         emp_name,
                         emp_role,
                         emp_date,
@@ -249,7 +283,7 @@ async def run_workflow(
                     )
 
                     logs.append(
-                        f"Email template parsed out and sent successfully to: {emp_email}"
+                        f"Email template parsed out and sent successfully to: {recipient_email}"
                     )
 
                 elif "sms" in node_type_normalized:
@@ -276,6 +310,8 @@ async def run_workflow(
                     delay_seconds = int(
                         current_node.get("delay", 5)
                     )
+                    
+                    print(f"[SAGA] Delay started for {delay_seconds} seconds")
 
                     await asyncio.sleep(delay_seconds)
 
@@ -292,16 +328,17 @@ async def run_workflow(
             except Exception as e:
                 print(f"[SAGA] Broadcast Complete Error: {e}")
                 
-            SagaManager.update_current_node(
-                run_id,
-                current_node_id
-            )
-
             SagaManager.mark_completed(
                 run_id=run_id,
                 node_id=current_node_id,
                 node_type=node_type_normalized
             )
+
+            SagaManager.update_current_node(
+                run_id,
+                current_node_id
+            )
+            
             print(f"[SAGA] Node Completed: {current_node_id}")
             
             if "condition" not in node_type_normalized:
@@ -343,7 +380,7 @@ async def run_workflow(
 
         SagaManager.fail(run_id)
 
-        
         await SagaManager.rollback(run_id, {"pdf_path": generated_pdf})
 
         raise
+    

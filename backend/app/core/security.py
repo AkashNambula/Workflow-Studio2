@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Union
 from jose import jwt
@@ -7,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 
 security_scheme = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 # --- 🟢 FIXED: SECURE BCRYPT CRYPTOGRAPHIC HASHING CONTEXT LAYER ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -50,7 +52,8 @@ def get_current_user_claims(token: HTTPAuthorizationCredentials = Depends(securi
     try:
         payload = jwt.decode(token.credentials, JWT_SECRET, algorithms=[ALGORITHM])
         return payload
-    except Exception:
+    except Exception as exc:
+        logger.info("JWT validation failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid signature or expired credentials session token",
