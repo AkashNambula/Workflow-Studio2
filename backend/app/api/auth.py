@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, EmailStr
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Depends, status, Body
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from app.db.database import db
 from app.core.security import (
     hash_password,
@@ -17,29 +19,90 @@ security_scheme = HTTPBearer()
 
 # ---------- Pydantic Models ----------
 
+class ErrorResponse(BaseModel):
+    detail: str = Field(..., description="Human-readable description of the request error.")
+
+
+class MessageResponse(BaseModel):
+    message: str = Field(..., description="Status message returned by the API.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"message": "Login successful"}
+    })
+
+
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(..., description="User email address used to sign in.")
+    password: str = Field(..., min_length=1, description="User password for the selected account.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "email": "demo@example.com",
+            "password": "ExamplePassword123!"
+        }
+    })
+
+
+class LoginResponse(BaseModel):
+    message: str = Field(..., description="Authentication status message.")
+    token: str = Field(..., description="JWT access token issued for the authenticated user.")
+    access_token: str = Field(..., description="Alias for the JWT access token to support frontend clients.")
+    token_type: str = Field(default="bearer", description="Authentication scheme used for the token.")
+    name: str = Field(..., description="Display name for the authenticated user.")
+    email: EmailStr = Field(..., description="Authenticated user's email address.")
+    phone: str = Field(default="", description="Authenticated user's phone number if available.")
+    role: str = Field(..., description="User role assigned to the authenticated session.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "message": "Login successful",
+            "token": "example.jwt.token",
+            "access_token": "example.jwt.token",
+            "token_type": "bearer",
+            "name": "Demo User",
+            "email": "demo@example.com",
+            "phone": "+1-555-0100",
+            "role": "Operator"
+        }
+    })
 
 
 class RegisterRequest(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    phone: str
-    role: str = "Operator"
+    name: str = Field(..., description="Full name for the user account.")
+    email: EmailStr = Field(..., description="Email address for the new account.")
+    password: str = Field(..., min_length=1, description="Initial password for the new account.")
+    phone: str = Field(..., description="Phone number for the new user.")
+    role: str = Field(default="Operator", description="Role assigned to the new account. Admin accounts are restricted in this endpoint.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Demo User",
+            "email": "demo@example.com",
+            "password": "ExamplePassword123!",
+            "phone": "+1-555-0108",
+            "role": "Operator"
+        }
+    })
 
 
 class ChangePasswordRequest(BaseModel):
-    email: EmailStr
-    old_password: str
-    new_password: str
+    email: EmailStr = Field(..., description="Email address of the account whose password is being changed.")
+    old_password: str = Field(..., description="Current password for the account.")
+    new_password: str = Field(..., description="New password to store for the account.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "email": "demo@example.com",
+            "old_password": "ExamplePassword123!",
+            "new_password": "ExamplePassword456!"
+        }
+    })
 
 
-# ✅ NEW
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    new_password: str
+    email: EmailStr = Field(..., description="Email address of the user whose password is being reset.")
+    new_password: str = Field(..., description="Replacement password for the target user.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "email": "demo@example.com",
+            "new_password": "ExamplePassword456!"
+        }
+    })
 
 
 # ---------- JWT Helper ----------
@@ -70,8 +133,33 @@ def get_current_user_claims(
 
 # ---------- Login ----------
 
-@router.post("/login")
-def login(data: LoginRequest):
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    summary="Authenticate a user",
+    description="Validate the supplied credentials and return a JWT token for authenticated access to protected API endpoints.",
+    responses={
+        200: {
+            "description": "Authentication successful",
+            "content": {"application/json": {"example": {
+                "message": "Login successful",
+                "token": "example.jwt.token",
+                "access_token": "example.jwt.token",
+                "token_type": "bearer",
+                "name": "Demo User",
+                "email": "demo@example.com",
+                "phone": "+1-555-0100",
+                "role": "Operator"
+            }}}
+        },
+        401: {
+            "model": ErrorResponse,
+            "description": "Invalid email or password.",
+            "content": {"application/json": {"example": {"detail": "Invalid Email or Password"}}},
+        },
+    },
+)
+def login(data: LoginRequest = Body(..., examples={"login": {"summary": "Demo login example", "value": {"email": "demo@example.com", "password": "ExamplePassword123!"}}})):
 
     user = db.users.find_one({"email": data.email})
 
@@ -106,8 +194,26 @@ def login(data: LoginRequest):
 
 # ---------- Change Own Password ----------
 
-@router.post("/change-password")
-def change_password(data: ChangePasswordRequest):
+@router.post(
+    "/change-password",
+    response_model=MessageResponse,
+    summary="Change the current account password",
+    description="Update a user's password after validating the existing password.",
+    responses={
+        200: {"description": "Password updated successfully", "model": MessageResponse},
+        400: {
+            "model": ErrorResponse,
+            "description": "The previous password did not match the stored password.",
+            "content": {"application/json": {"example": {"detail": "Old password is incorrect"}}},
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "The target user account does not exist.",
+            "content": {"application/json": {"example": {"detail": "User not found"}}},
+        },
+    },
+)
+def change_password(data: ChangePasswordRequest = Body(..., examples={"change_password": {"summary": "Password change example", "value": {"email": "demo@example.com", "old_password": "ExamplePassword123!", "new_password": "ExamplePassword456!"}}})):
 
     user = db.users.find_one({"email": data.email})
 
@@ -142,9 +248,32 @@ def change_password(data: ChangePasswordRequest):
 
 # ---------- Admin Create User ----------
 
-@router.post("/admin/create-user")
+@router.post(
+    "/admin/create-user",
+    response_model=MessageResponse,
+    summary="Create a new non-admin user",
+    description="Create a new Operator or Viewer user account. Only authenticated admins can use this endpoint.",
+    responses={
+        200: {"description": "User created successfully.", "model": MessageResponse},
+        400: {
+            "model": ErrorResponse,
+            "description": "The supplied payload is invalid or the email already exists.",
+            "content": {"application/json": {"example": {"detail": "Email already exists"}}},
+        },
+        403: {
+            "model": ErrorResponse,
+            "description": "The caller is not an Admin.",
+            "content": {"application/json": {"example": {"detail": "Only Admin can create users."}}},
+        },
+        401: {
+            "model": ErrorResponse,
+            "description": "The supplied JWT token is missing or invalid.",
+            "content": {"application/json": {"example": {"detail": "Could not validate credentials"}}},
+        },
+    },
+)
 def admin_create_user(
-    user: RegisterRequest,
+    user: RegisterRequest = Body(..., examples={"create_user": {"summary": "Create operator account", "value": {"name": "Demo User", "email": "demo@example.com", "password": "ExamplePassword123!", "phone": "+1-555-0108", "role": "Operator"}}}),
     token_payload: dict = Depends(get_current_user_claims)
 ):
 

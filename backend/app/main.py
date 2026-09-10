@@ -24,7 +24,17 @@ from app.scheduler.scheduler import start_scheduler
 
 app = FastAPI(
     title="HR Automation Workflow Studio",
-    version="3.0.0"
+    version="3.0.0",
+    description="Backend APIs for authentication, workflow management, execution history, analytics, and operational RBAC in the Workflow Studio platform.",
+    openapi_tags=[
+        {"name": "Authentication", "description": "Login, password changes, user creation, and admin account management APIs."},
+        {"name": "Workflows", "description": "Workflow save, lookup, and execution APIs used by the builder and run engine."},
+        {"name": "Workflow Execution Engine", "description": "Background workflow execution and queueing endpoints for operational users."},
+        {"name": "Dashboard", "description": "Admin dashboard metrics and recent workflow activity."},
+        {"name": "Analytics", "description": "Operational analytics and workflow activity summaries."},
+        {"name": "Streaming Real-Time Logs", "description": "Live workflow log streaming for execution monitoring."},
+        {"name": "Chatbot", "description": "Chat assistant endpoints for workflow-aware support."},
+    ],
 )
 
 

@@ -1,8 +1,13 @@
-import React, { useEffect, useState, ChangeEvent, MouseEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type MouseEvent, type ReactElement } from "react";
 import { useNavigate } from "react-router-dom";
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { ExecutionHistoryItem, ExecutionHistoryResponse } from "./types";
 import TimeRangeFilter from "./components/TimeRangeFilter";
+
+interface ExecutionHistoryPageProps {}
+
+type StatusFilter = "All" | "Success" | "Running" | "Failed";
+type TimeRange = "all" | "24h" | "7d" | "14d" | "30d";
 
 interface ThemeColors {
   mainBg: string;
@@ -14,20 +19,19 @@ interface ThemeColors {
   accent: string;
 }
 
-export default function ExecutionHistoryPage(): React.ReactElement {
+export default function ExecutionHistoryPage(_props: ExecutionHistoryPageProps = {}): ReactElement {
   const [history, setHistory] = useState<ExecutionHistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<unknown>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("All");
-  const [timeRange, setTimeRange] = useState<string>("all");
-  const [appliedTimeRange, setAppliedTimeRange] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const [appliedTimeRange, setAppliedTimeRange] = useState<TimeRange>("all");
   const [appliedSearch, setAppliedSearch] = useState<string>("");
-  const [appliedStatus, setAppliedStatus] = useState<string>("All");
+  const [appliedStatus, setAppliedStatus] = useState<StatusFilter>("All");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-  const isDarkTheme = true;
 
   const activeTheme: ThemeColors = {
     mainBg: "#0B0B0F",
@@ -67,20 +71,20 @@ export default function ExecutionHistoryPage(): React.ReactElement {
     return "#ef4444";
   };
 
-  const normalizedStatus = (status: string): string => {
+  const normalizedStatus = (status: string): Exclude<StatusFilter, "All"> => {
     const s = String(status || "").toLowerCase();
     if (s.includes("success") || s.includes("executed")) return "Success";
     if (s.includes("running")) return "Running";
     return "Failed";
   };
 
-  const filteredHistory = history.filter((item: ExecutionHistoryItem) => {
+  const filteredHistory = history.filter((item: ExecutionHistoryItem): boolean => {
     const matchesSearch = String(item.workflow_name || "")
       .toLowerCase()
       .includes(appliedSearch.toLowerCase());
     const matchesStatus = appliedStatus === "All" || normalizedStatus(item.status) === appliedStatus;
     const timestamp = item.completed_at;
-    const matchesTime = appliedTimeRange === "all" || (timestamp && new Date(timestamp) >= new Date(Date.now() - Number(appliedTimeRange.replace("d", "")) * 86400000));
+    const matchesTime = appliedTimeRange === "all" || Boolean(timestamp && new Date(timestamp) >= new Date(Date.now() - Number(appliedTimeRange.replace("d", "")) * 86400000));
     return matchesSearch && matchesStatus && matchesTime;
   });
 
@@ -92,6 +96,29 @@ export default function ExecutionHistoryPage(): React.ReactElement {
   useEffect(() => {
     setCurrentPage(1);
   }, [appliedSearch, appliedStatus, appliedTimeRange]);
+
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    setSearchTerm(event.target.value);
+  };
+
+  const handleStatusChange = (event: ChangeEvent<HTMLSelectElement>): void => {
+    setStatusFilter(event.target.value as StatusFilter);
+  };
+
+  const applyFilters = (): void => {
+    setAppliedSearch(searchTerm);
+    setAppliedStatus(statusFilter);
+    setAppliedTimeRange(timeRange);
+  };
+
+  const clearFilters = (): void => {
+    setSearchTerm("");
+    setStatusFilter("All");
+    setTimeRange("all");
+    setAppliedSearch("");
+    setAppliedStatus("All");
+    setAppliedTimeRange("all");
+  };
 
   const goToPage = (page: number): void => {
     if (page >= 1 && page <= totalPages) {
@@ -143,7 +170,7 @@ export default function ExecutionHistoryPage(): React.ReactElement {
           type="text"
           placeholder="Search workflow"
           value={searchTerm}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+          onChange={handleSearchChange}
           style={{
             flex: "1 1 240px",
             minWidth: 220,
@@ -157,7 +184,7 @@ export default function ExecutionHistoryPage(): React.ReactElement {
         />
         <select
           value={statusFilter}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
+          onChange={handleStatusChange}
           style={{
             padding: "10px 12px",
             borderRadius: 999,
@@ -176,19 +203,8 @@ export default function ExecutionHistoryPage(): React.ReactElement {
       <TimeRangeFilter 
         value={timeRange} 
         onChange={setTimeRange} 
-        onApply={() => { 
-          setAppliedSearch(searchTerm); 
-          setAppliedStatus(statusFilter); 
-          setAppliedTimeRange(timeRange); 
-        }} 
-        onClear={() => { 
-          setSearchTerm(""); 
-          setStatusFilter("All"); 
-          setTimeRange("all"); 
-          setAppliedSearch(""); 
-          setAppliedStatus("All"); 
-          setAppliedTimeRange("all"); 
-        }} 
+        onApply={applyFilters}
+        onClear={clearFilters}
       />
 
       {history.length === 0 ? (

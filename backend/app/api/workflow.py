@@ -1,9 +1,10 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
+
+from fastapi import APIRouter, HTTPException, Depends, status, Body
+from pydantic import BaseModel, Field, ConfigDict
 from app.db.database import db
 from app.core.security import get_current_user_claims
 from app.core.cache import (
@@ -24,13 +25,85 @@ router = APIRouter(tags=["Workflows"])
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Request Schemas ---
+class ErrorResponse(BaseModel):
+    detail: str = Field(..., description="Human-readable description of the failure.")
+    model_config = ConfigDict(json_schema_extra={"example": {"detail": "Workflow configuration was not found."}})
+
+
 class WorkflowSaveRequest(BaseModel):
-    name: str
-    nodes: List[Dict[str, Any]]
-    edges: List[Dict[str, Any]]
+    name: str = Field(..., description="Unique name used to identify the saved workflow definition.")
+    nodes: List[Dict[str, Any]] = Field(default_factory=list, description="Workflow node definitions for the canvas.")
+    edges: List[Dict[str, Any]] = Field(default_factory=list, description="Connections between workflow nodes.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "new-hire-onboarding",
+            "nodes": [{"id": "start", "type": "start", "data": {"label": "Start"}, "position": {"x": 0, "y": 0}}],
+            "edges": []
+        }
+    })
+
+
+class MessageResponse(BaseModel):
+    message: str = Field(..., description="Status message returned by the workflow endpoint.")
+    model_config = ConfigDict(json_schema_extra={"example": {"message": "Workflow canvas layout saved completely!"}})
+
+
+class WorkflowDefinition(BaseModel):
+    name: str = Field(..., description="Workflow definition name.")
+    nodes: List[Dict[str, Any]] = Field(default_factory=list, description="Workflow node definitions.")
+    edges: List[Dict[str, Any]] = Field(default_factory=list, description="Workflow connection edges.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "new-hire-onboarding",
+            "nodes": [{"id": "start", "type": "start", "position": {"x": 0, "y": 0}}],
+            "edges": []
+        }
+    })
+
+
+class WorkflowSummary(WorkflowDefinition):
+    created_at: str | None = Field(default=None, description="Workflow creation timestamp in ISO-8601 format.")
+    updated_at: str | None = Field(default=None, description="Workflow last update timestamp in ISO-8601 format.")
+
+
+class Employee(BaseModel):
+    name: str = Field(..., description="Employee full name.")
+    email: str = Field(..., description="Employee email used to match the workflow execution target.")
+    phone: str = Field(..., description="Employee phone number.")
+    role: str = Field(..., description="Employee role used by the automation workflow.")
+    joining_date: str = Field(..., description="Employee start date in YYYY-MM-DD format.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Priya Nair",
+            "email": "priya@workflowstudio.local",
+            "phone": "+1-555-0108",
+            "role": "Operator",
+            "joining_date": "2026-06-04"
+        }
+    })
+
 
 class WorkflowExecuteRequest(BaseModel):
-    employees: List[Dict[str, Any]]
+    employees: List[Employee] = Field(..., description="One or more employee records to pass to the workflow engine.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "employees": [{
+                "name": "Priya Nair",
+                "email": "priya@workflowstudio.local",
+                "phone": "+1-555-0108",
+                "role": "Operator",
+                "joining_date": "2026-06-04"
+            }]
+        }
+    })
+
+
+class WorkflowRunResponse(BaseModel):
+    run_id: str = Field(..., description="Unique identifier assigned to the queued workflow run.")
+    status: Literal["queued"] = Field(default="queued", description="Current execution state as the workflow enters the queue.")
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"run_id": "f9aee6f4-4e14-4722-b556-9a6e955d0ae6", "status": "queued"}
+    })
 
 
 # --- Helper Role Validation Checker ---
@@ -65,8 +138,18 @@ async def acquire_execution_lock(idempotency_key: str) -> bool:
 
 # --- Core Router Endpoints ---
 
-@router.post("/create-workflow")
-async def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends(get_current_user_claims)):
+@router.post(
+    "/create-workflow",
+    response_model=MessageResponse,
+    summary="Save or update a workflow definition",
+    description="Persist the current workflow canvas to MongoDB and refresh the cached workflow list for subsequent API requests.",
+    responses={
+        200: {"description": "Workflow saved successfully", "model": MessageResponse},
+        401: {"model": ErrorResponse, "description": "The caller JWT token is missing or invalid."},
+        403: {"model": ErrorResponse, "description": "The caller does not have operational clearance."},
+    },
+)
+async def save_workflow(data: WorkflowSaveRequest = Body(..., examples={"workflow": {"summary": "Workflow save example", "value": {"name": "new-hire-onboarding", "nodes": [{"id": "start", "type": "start", "data": {"label": "Start"}, "position": {"x": 0, "y": 0}}], "edges": []}}}), token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
     workflow_data = {
         "name": data.name if data.name.strip() else "Notification Workflow",
@@ -85,7 +168,18 @@ async def save_workflow(data: WorkflowSaveRequest, token_payload: dict = Depends
 
 
 # 🟢 FIXED: ADDED MISSING ROUTE TO LOAD INDIVIDUAL WORKFLOWS AND STOP 404 ERRORS
-@router.get("/workflow/{name}")
+@router.get(
+    "/workflow/{name}",
+    response_model=WorkflowDefinition,
+    summary="Retrieve one saved workflow",
+    description="Fetch a single workflow definition by name, using the Redis cache when available and MongoDB as the source of truth.",
+    responses={
+        200: {"description": "Workflow definition returned successfully", "model": WorkflowDefinition},
+        401: {"model": ErrorResponse, "description": "The caller JWT token is missing or invalid."},
+        403: {"model": ErrorResponse, "description": "The caller does not have operational clearance."},
+        404: {"model": ErrorResponse, "description": "The workflow definition could not be found."},
+    },
+)
 async def get_single_workflow(
     name: str,
     token_payload: dict = Depends(get_current_user_claims)
@@ -134,8 +228,46 @@ async def get_single_workflow(
     return result
 
 
-@router.post("/run-workflow/{workflow_name}")
-async def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_payload: dict = Depends(get_current_user_claims)):
+@router.post(
+    "/run-workflow/{workflow_name}",
+    response_model=WorkflowRunResponse,
+    summary="Queue a workflow execution",
+    description="Validate authorization, ensure the workflow exists, acquire an idempotency lock, and queue the workflow run for asynchronous execution.",
+    responses={
+        200: {"description": "Workflow queued successfully", "model": WorkflowRunResponse},
+        401: {
+            "model": ErrorResponse,
+            "description": "Invalid or expired credentials session token.",
+            "content": {"application/json": {"example": {"detail": "Invalid or expired credentials session token."}}},
+        },
+        403: {
+            "model": ErrorResponse,
+            "description": "The caller does not have sufficient operational clearance.",
+            "content": {"application/json": {"example": {"detail": "The caller does not have sufficient operational clearance."}}},
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "Workflow configuration was not found.",
+            "content": {"application/json": {"example": {"detail": "Workflow configuration was not found."}}},
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "A workflow run for the same employee is already in progress.",
+            "content": {"application/json": {"example": {"detail": "Workflow is already running for this employee."}}},
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "The request payload is missing required employee data.",
+            "content": {"application/json": {"example": {"detail": "A valid employee email is required to run the workflow."}}},
+        },
+        503: {
+            "model": ErrorResponse,
+            "description": "The execution queue could not accept the workflow run.",
+            "content": {"application/json": {"example": {"detail": "Workflow execution queue is temporarily unavailable."}}},
+        },
+    },
+)
+async def run_workflow(workflow_name: str, data: WorkflowExecuteRequest = Body(..., examples={"queued_run": {"summary": "Queue a workflow run", "value": {"employees": [{"name": "Priya Nair", "email": "priya@workflowstudio.local", "phone": "+1-555-0108", "role": "Operator", "joining_date": "2026-06-04"}]}}}), token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
     workflow = db.workflows.find_one({"name": workflow_name})
     if not workflow:
@@ -189,7 +321,17 @@ async def run_workflow(workflow_name: str, data: WorkflowExecuteRequest, token_p
     }
 
 
-@router.get("/workflows")
+@router.get(
+    "/workflows",
+    response_model=List[WorkflowSummary],
+    summary="List saved workflows",
+    description="Return the available saved workflow definitions, including creation and update metadata when present.",
+    responses={
+        200: {"description": "List of workflow definitions returned successfully", "content": {"application/json": {"example": [{"name": "new-hire-onboarding", "nodes": [{"id": "start", "type": "start"}], "edges": [], "created_at": "2026-06-01T10:00:00", "updated_at": "2026-06-01T10:05:00"}]}}},
+        401: {"model": ErrorResponse, "description": "The caller JWT token is missing or invalid."},
+        403: {"model": ErrorResponse, "description": "The caller does not have operational clearance."},
+    },
+)
 async def get_all_workflows(token_payload: dict = Depends(get_current_user_claims)):
     verify_operational_clearance(token_payload)
 
